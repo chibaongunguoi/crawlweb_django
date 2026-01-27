@@ -1,0 +1,21 @@
+<!-- templates/recent_jobs.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+   <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   <title>Recent jobs</title>
+</head>
+<body>
+   <h1>Five Most Recent jobs</h1>
+   <ul>
+      {% for job in jobs %}
+            <li>
+               <strong>{{ job.job_title }}</strong> (Released: {{ job.collected_at }})
+            </li>
+      {% empty %}
+            <li>No jobs found.</li>
+      {% endfor %}
+   </ul>
+</body>
+</html>

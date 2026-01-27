@@ -1,0 +1,144 @@
+.job-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 20px;
+  transition: box-shadow 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.job-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+.clickable-card {
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.clickable-card:hover {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  transform: translateY(-4px);
+  border-color: #3b82f6;
+}
+
+.clickable-card:active {
+  transform: translateY(-2px);
+}
+
+.job-header {
+  display: flex;
+  gap: 16px;
+}
+
+.company-logo {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.company-logo img {
+  border-radius: 4px;
+  object-fit: contain;
+}
+
+.job-info {
+  flex: 1;
+}
+
+.job-title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #333;
+}
+
+.job-details {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: #666;
+  font-size: 0.875rem;
+}
+
+.detail-item {
+  display: flex;
+  /* align-items: center; */
+}
+
+.detail-item svg {
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+}
+
+.skills-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.skill-tag {
+  background-color: #f3f4f6;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: #666;
+}
+
+/* Follow Badge Styles */
+.follow-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  padding: 6px 10px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+  z-index: 10;
+  transition: all 0.3s ease;
+}
+
+.follow-badge:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+}
+
+.heart-icon-small {
+  width: 14px;
+  height: 14px;
+  color: white;
+}
+
+.follow-count {
+  min-width: 16px;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .job-header {
+    flex-direction: column;
+  }
+
+  .company-logo {
+    width: 48px;
+    height: 48px;
+  }
+
+  .follow-badge {
+    top: 8px;
+    right: 8px;
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+}
