@@ -60,7 +60,6 @@ export default function JobCard({ job, followCount = null, showFollowBadge = fal
             </span>
           </div>
           <div className="skills-list">
-            {console.log("Job skills:", job.skills)}
             {job.skills && job.skills.map((skill, index) => (
               <span key={index} className="skill-tag">
                 {skill}

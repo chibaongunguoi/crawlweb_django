@@ -180,8 +180,7 @@ select option {
 }
 
 .form-control {
-  width: 100%;
-  height: 42px;
+  width: 78%;
   padding: 8px 40px 8px 40px;
   font-size: 14px;
   line-height: 1.5;
@@ -635,4 +634,25 @@ select option {
     height: 16px;
     width: auto;
   }
+}
+
+/* Icon styles */
+.icon-search::before {
+  content: "🔍";
+  font-style: normal;
+}
+
+.icon-arrow-right::before {
+  content: "→";
+  font-style: normal;
+}
+
+.form-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #666;
+  font-size: 16px;
+  pointer-events: none;
 }

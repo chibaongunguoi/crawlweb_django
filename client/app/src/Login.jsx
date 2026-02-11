@@ -25,7 +25,7 @@ export default function LoginPage() {
     const password = formData.get("password");
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/auth/login/", {
+      const response = await fetch("http://localhost:8000/api/auth/login/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include", // Important for cookies
@@ -34,9 +34,7 @@ export default function LoginPage() {
 
       if (response.ok) {
         const data = await response.json();
-        
-        // Store user info in localStorage
-        localStorage.setItem("user", JSON.stringify(data.user));
+        console.log("Login successful:", data);
         
         // Dispatch custom event to notify other components
         window.dispatchEvent(new CustomEvent('userLoginSuccess'));

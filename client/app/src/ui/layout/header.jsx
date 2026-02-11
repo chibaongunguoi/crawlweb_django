@@ -1,6 +1,7 @@
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import "./userLayout.css";
 import { useEffect, useState } from "react";
+import JobSearch from "../components/JobSearch";
 
 export default function Header() {
   const [user, setUser] = useState(null);
@@ -14,7 +15,7 @@ export default function Header() {
   const fetchUser = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/auth/user/', {
+      const response = await fetch('http://localhost:8000/api/auth/user/', {
         method: 'GET',
         credentials: 'include',
       });
@@ -122,7 +123,7 @@ export default function Header() {
 
   async function logOut() {
     try {
-      await fetch("http://127.0.0.1:8000/api/auth/logout/", {
+      await fetch("http://localhost:8000/api/auth/logout/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -149,8 +150,7 @@ export default function Header() {
           </div>
           <ul className="search">
             <li>
-              {/* TODO: Add JobSearch component for React */}
-              <input type="search" placeholder="Tìm kiếm việc làm..." className="search-input" />
+              <JobSearch />
             </li>
 
           </ul>{" "}

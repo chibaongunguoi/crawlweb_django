@@ -20,9 +20,10 @@ from .serializers import JobDetailSerializer, UserSerializer
 import bcrypt
 import jwt
 import datetime
+import logging
 from django.conf import settings
 
-
+logger = logging.getLogger(__name__)
 @api_view(['GET'])
 def getJobDetail(request):
     jobs = JobDetail.objects.all()
@@ -35,6 +36,8 @@ def login(request):
     try:
         username = request.data.get('username')
         password = request.data.get('password')
+        
+        logger.info(f"Login attempt for user: {username}")
 
         if not username or not password:
             return Response(
@@ -57,19 +60,27 @@ def login(request):
                 {'error': 'Bad credentials.'}, 
                 status=status.HTTP_401_UNAUTHORIZED
             )
+        
+        logger.info(f"User found: id={user.id}, pk={user.pk}, username={user.username}")
 
         # Generate JWT token
         expiry = datetime.datetime.utcnow() + datetime.timedelta(hours=10)
+        user_id_str = str(user.pk) if user.pk else str(user.id)
+        
+        logger.info(f"Using userId: {user_id_str}")
+        
         token = jwt.encode(
             {
                 'username': user.username,
                 'role': user.role,
-                'userId': str(user.id),
+                'userId': user_id_str,
                 'exp': expiry
             },
             settings.SECRET_KEY,
             algorithm='HS256'
         )
+        
+        logger.info(f"Token generated for user: {username}")
 
         # Determine redirect based on role
         redirect_map = {
@@ -85,7 +96,7 @@ def login(request):
             'user': {
                 'username': user.username,
                 'role': user.role,
-                'id': str(user.id)
+                'id': user_id_str
             }
         }, status=status.HTTP_200_OK)
 
@@ -96,12 +107,17 @@ def login(request):
             httponly=True,
             secure=False,  # Set to True in production with HTTPS
             samesite='Lax',
-            max_age=36000  # 10 hours
+            max_age=36000,  # 10 hours
+            path='/',
+            domain='localhost'  # Explicit domain
         )
+        
+        logger.info(f"Cookie set for user: {username}")
 
         return response
 
     except Exception as e:
+        logger.error(f"Login error: {e}")
         print(f"Login error: {e}")
         return Response(
             {'error': 'Something went wrong.'}, 
@@ -112,29 +128,50 @@ def login(request):
 @api_view(['GET'])
 def get_user(request):
     try:
-        auth_token = request.COOKIES.get('auth')
+        logger.info(f"Get user request from: {request.META.get('HTTP_ORIGIN')}")
+        logger.info(f"All cookies: {request.COOKIES}")
         
+        auth_token = request.COOKIES.get('auth')
+        logger.info(f"Auth token value: {auth_token}")
+
         if not auth_token:
+            logger.warning("No auth token found in cookies")
             return Response({'user': None}, status=status.HTTP_200_OK)
         
         # Decode JWT token
         try:
             payload = jwt.decode(auth_token, settings.SECRET_KEY, algorithms=['HS256'])
-            user = User.objects.get(id=payload['userId'])
+            logger.info(f"Decoded payload: {payload}")
+            
+            username = payload.get('username')
+            if not username:
+                logger.warning("No username in token payload")
+                return Response({'user': None}, status=status.HTTP_200_OK)
+            
+            try:
+                user = User.objects.get(username=username)
+            except User.DoesNotExist:
+                logger.warning(f"User not found with username: {username}")
+                return Response({'user': None}, status=status.HTTP_200_OK)
+            
+            logger.info(f"User authenticated: {user.username}")
             
             return Response({
                 'user': {
                     'username': user.username,
                     'role': user.role,
-                    'id': str(user.id)
+                    'id': str(user.pk)
                 }
             }, status=status.HTTP_200_OK)
         except jwt.ExpiredSignatureError:
+            logger.warning("Token expired")
             return Response({'user': None}, status=status.HTTP_200_OK)
-        except (jwt.InvalidTokenError, User.DoesNotExist):
+        except jwt.InvalidTokenError as e:
+            logger.warning(f"Invalid token: {e}")
             return Response({'user': None}, status=status.HTTP_200_OK)
             
     except Exception as e:
+        logger.error(f"Get user error: {e}", exc_info=True)
         print(f"Get user error: {e}")
         return Response({'user': None}, status=status.HTTP_200_OK)
 
@@ -207,7 +244,7 @@ def register(request):
             'success': True,
             'message': 'Đăng ký thành công',
             'user': {
-                'id': str(new_user.id),
+                'id': str(new_user.pk),
                 'username': new_user.username,
                 'role': new_user.role
             }

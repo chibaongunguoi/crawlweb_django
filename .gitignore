@@ -1,2 +1,5 @@
 # Ignore MongoDB data directory
 var/mongodb/
+client/app/node_modules/
+server/crawlweb/api/__pycache__
+.log

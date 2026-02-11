@@ -11,20 +11,17 @@ export default function Home() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    console.log("Fetching jobs and follow counts...");
     fetchJobsAndFollowCounts();
   }, []);
 
   const fetchJobsAndFollowCounts = async () => {
     try {
       // Fetch jobs
-      const jobsResponse = await fetch("http://127.0.0.1:8000/api/jobs/");
+      const jobsResponse = await fetch("http://localhost:8000/api/jobs/");
       const jobsData = await jobsResponse.json();
       setJobs(jobsData);
-      console.log("Fetched jobs:", jobsData);
       if (jobsResponse.ok) {  
         if (jobsData) {
-          console.log("Fetched jobs:", jobsData.data);
           // // Fetch follow counts for all jobs
           // const jobIds = jobsData.data.map(job => job._id);
           // const followResponse = await fetch("/api/follow/count", {
