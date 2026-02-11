@@ -14,13 +14,21 @@ export default function Header() {
   const fetchUser = async () => {
     setIsLoading(true);
     try {
-      // TODO: Implement getUser function for React
-      // const data = await getUser();
-      const data = null; // Temporary
-      setUser(data);
-      // Fetch notifications only if user is logged in and has role 'user'
-      if (data && data.role === 'user') {
-        fetchNotifications();
+      const response = await fetch('http://127.0.0.1:8000/api/auth/user/', {
+        method: 'GET',
+        credentials: 'include',
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setUser(data.user);
+        
+        // Fetch notifications only if user is logged in and has role 'user'
+        if (data.user && data.user.role === 'user') {
+          fetchNotifications();
+        }
+      } else {
+        setUser(null);
       }
     } catch (error) {
       console.error('Error loading user:', error);
@@ -113,13 +121,19 @@ export default function Header() {
   }, [showNotifications]);
 
   async function logOut() {
-    await fetch("/api/auth/logout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
-    setUser(null); // Immediately update local state
-    window.dispatchEvent(new CustomEvent('userLogoutSuccess'));
-    navigate("/login");
+    try {
+      await fetch("http://127.0.0.1:8000/api/auth/logout/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      setUser(null); // Immediately update local state
+      localStorage.removeItem('user');
+      window.dispatchEvent(new CustomEvent('userLogoutSuccess'));
+      navigate("/login");
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
   }
 
   return (

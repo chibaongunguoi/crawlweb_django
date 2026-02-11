@@ -1,6 +1,13 @@
 from rest_framework import serializers
-from .models import JobDetail
+from .models import JobDetail, User
 import json
+
+
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'role']
+
 
 class JobDetailSerializer(serializers.ModelSerializer):
     skills = serializers.SerializerMethodField()

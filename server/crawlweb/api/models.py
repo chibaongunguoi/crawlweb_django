@@ -4,6 +4,36 @@ from django_mongodb_backend.fields import EmbeddedModelField, ArrayField
 from django_mongodb_backend.models import EmbeddedModel
 
 
+class User(models.Model):
+    username = models.CharField(
+        max_length=150,
+        unique=True,
+        help_text="Tên đăng nhập"
+    )
+    password = models.CharField(
+        max_length=255,
+        help_text="Mật khẩu đã hash"
+    )
+    role = models.CharField(
+        max_length=20,
+        choices=[
+            ('admin', 'Admin'),
+            ('user', 'User'),
+            ('company', 'Company'),
+        ],
+        default='user',
+        help_text="Vai trò người dùng"
+    )
+
+    class Meta:
+        db_table = 'User'
+        verbose_name = 'User'
+        verbose_name_plural = 'Users'
+
+    def __str__(self):
+        return f"{self.username} ({self.role})"
+
+
 class JobDetail(models.Model):
     url = models.URLField(
         max_length=500,
