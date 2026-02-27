@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './admin.css';
 
 const ScrapeManager = () => {
@@ -9,6 +9,40 @@ const ScrapeManager = () => {
   const [submitting, setSubmitting] = useState(false);
   const [activeJobId, setActiveJobId] = useState(null);
   const [polling, setPolling] = useState(false);
+  const [toast, setToast] = useState({ show: false, type: '', message: '' });
+  const [viewModal, setViewModal] = useState({ show: false, job: null });
+  const [message, setMessage] = useState({ type: '', text: '' });
+  const pollingIntervalRef = useRef(null);
+
+  // Show toast notification
+  const showToast = (type, message) => {
+    setToast({ show: true, type, message });
+    setTimeout(() => {
+      setToast({ show: false, type: '', message: '' });
+    }, 5000);
+  };
+
+  // Fetch all jobs
+  const fetchJobs = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('http://localhost:8000/api/scrape/jobs/', {
+        credentials: 'include',
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setJobs(data.jobs || []);
+      } else {
+        setError('Failed to fetch jobs');
+      }
+    } catch (err) {
+      console.error('Error fetching jobs:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     fetchJobs();
@@ -16,9 +50,15 @@ const ScrapeManager = () => {
 
   // Poll for active job status
   useEffect(() => {
-    if (!activeJobId || !polling) return;
+    if (!activeJobId || !polling) {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      return;
+    }
 
-    const interval = setInterval(async () => {
+    const pollJobStatus = async () => {
       try {
         const response = await fetch(`http://localhost:8000/api/scrape/status/${activeJobId}/`, {
           credentials: 'include',
@@ -29,50 +69,66 @@ const ScrapeManager = () => {
           const job = data.job;
           
           // Update job in list
-          setJobs(prevJobs => 
-            prevJobs.map(j => j.id === activeJobId ? job : j)
-          );
+          setJobs(prevJobs => {
+            const index = prevJobs.findIndex(j => j.id === activeJobId);
+            if (index >= 0) {
+              const updated = [...prevJobs];
+              updated[index] = job;
+              return updated;
+            }
+            return [job, ...prevJobs];
+          });
+          
+          // Update progress message if job is processing
+          if (job.status === 'processing' && job.totalUrls > 0) {
+            const progressPercent = job.progress || 0;
+            const processed = job.processedUrls || 0;
+            const total = job.totalUrls || 0;
+            setMessage({ 
+              type: 'info', 
+              text: `Đang xử lý... ${processed}/${total} URL (${progressPercent}%)` 
+            });
+          }
           
           // Stop polling if job is complete or failed
           if (job.status === 'completed' || job.status === 'failed') {
-            setPolling(false);
             setActiveJobId(null);
-            fetchJobs(); // Refresh full list
+            setSubmitting(false);
+            setPolling(false);
+            
+            if (job.status === 'completed') {
+              showToast('success', `Cào dữ liệu thành công! Đã thu thập ${job.jobCount} công việc từ ${job.totalUrls} URL.`);
+              setMessage({ type: 'success', text: `Hoàn thành! Đã thu thập ${job.jobCount} công việc từ ${job.totalUrls} URL.` });
+              setUrlInput("");
+            } else {
+              showToast('error', `Cào dữ liệu thất bại: ${job.errorMessage || 'Lỗi không xác định'}`);
+              setMessage({ type: 'error', text: job.errorMessage || 'Có lỗi xảy ra khi cào dữ liệu!' });
+            }
+            
+            fetchJobs();
           }
         }
       } catch (err) {
         console.error('Error polling job status:', err);
       }
-    }, 2000); // Poll every 2 seconds
+    };
 
-    return () => clearInterval(interval);
-  }, [activeJobId, polling]);
+    // Start interval
+    pollingIntervalRef.current = setInterval(pollJobStatus, 3000);
+    pollJobStatus(); // Call immediately
 
-  const fetchJobs = async () => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const response = await fetch('http://localhost:8000/api/scrape/jobs/', {
-        credentials: 'include',
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch jobs');
+    // Cleanup
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
       }
-      
-      const data = await response.json();
-      setJobs(data.jobs || []);
-    } catch (err) {
-      console.error('Error fetching jobs:', err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+  }, [activeJobId, polling]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setMessage({ type: '', text: '' });
     
     // Parse URLs from input (one per line)
     const urls = urlInput
@@ -81,7 +137,7 @@ const ScrapeManager = () => {
       .filter(url => url.length > 0);
     
     if (urls.length === 0) {
-      alert('Vui lòng nhập ít nhất một URL');
+      setMessage({ type: 'error', text: 'Vui lòng nhập ít nhất một URL hợp lệ!' });
       return;
     }
     
@@ -105,26 +161,23 @@ const ScrapeManager = () => {
       
       const data = await response.json();
       
-      // Clear input
-      setUrlInput('');
-      
       // Start polling for this job
       setActiveJobId(data.jobId);
       setPolling(true);
+      setMessage({ type: 'info', text: `Đang xử lý ${urls.length} URL...` });
       
       // Refresh job list
       fetchJobs();
     } catch (err) {
       console.error('Error submitting URLs:', err);
       setError(err.message);
-      alert('Lỗi: ' + err.message);
-    } finally {
+      setMessage({ type: 'error', text: 'Có lỗi xảy ra khi gửi yêu cầu!' });
       setSubmitting(false);
     }
   };
 
   const handleDelete = async (jobId) => {
-    if (!window.confirm('Bạn có chắc muốn xóa công việc này?')) {
+    if (!window.confirm('Bạn có chắc muốn xóa lịch sử cào dữ liệu này?')) {
       return;
     }
     
@@ -138,32 +191,66 @@ const ScrapeManager = () => {
         throw new Error('Failed to delete job');
       }
       
-      // Refresh list
-      fetchJobs();
+      showToast('success', 'Xóa lịch sử thành công');
+      setJobs(prev => prev.filter(job => job.id !== jobId));
     } catch (err) {
       console.error('Error deleting job:', err);
-      alert('Lỗi khi xóa: ' + err.message);
+      showToast('error', 'Lỗi khi xóa lịch sử');
+    }
+  };
+
+  const handleViewJobUrls = (job) => {
+    setViewModal({ show: true, job });
+  };
+
+  const closeViewModal = () => {
+    setViewModal({ show: false, job: null });
+  };
+
+  const handleViewDetail = async (jobUrl) => {
+    try {
+      const response = await fetch(`http://localhost:8000/api/jobs/?url=${encodeURIComponent(jobUrl)}`, {
+        credentials: 'include',
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.jobs && data.jobs.length > 0) {
+          // Open job detail in new tab - adjust URL based on your routing
+          window.open(`/job/${data.jobs[0]._id}`, '_blank');
+        } else {
+          showToast('error', 'Không tìm thấy công việc');
+        }
+      } else {
+        showToast('error', 'Lỗi khi tải thông tin công việc');
+      }
+    } catch (error) {
+      console.error('Error fetching job detail:', error);
+      showToast('error', 'Có lỗi xảy ra');
     }
   };
 
   const getStatusBadge = (status) => {
-    const statusClasses = {
-      pending: 'status-badge status-pending',
-      processing: 'status-badge status-processing',
-      completed: 'status-badge status-completed',
-      failed: 'status-badge status-failed',
+    const statusConfig = {
+      pending: { label: 'Đang chờ', color: '#f59e0b' },
+      processing: { label: 'Đang xử lý', color: '#3b82f6' },
+      completed: { label: 'Hoàn thành', color: '#10b981' },
+      failed: { label: 'Thất bại', color: '#ef4444' }
     };
-    
-    const statusText = {
-      pending: 'Đang chờ',
-      processing: 'Đang xử lý',
-      completed: 'Hoàn thành',
-      failed: 'Thất bại',
-    };
-    
+
+    const config = statusConfig[status] || { label: status, color: '#6b7280' };
+
     return (
-      <span className={statusClasses[status] || 'status-badge'}>
-        {statusText[status] || status}
+      <span style={{
+        display: 'inline-block',
+        padding: '4px 12px',
+        borderRadius: '9999px',
+        fontSize: '12px',
+        fontWeight: '500',
+        backgroundColor: `${config.color}20`,
+        color: config.color
+      }}>
+        {config.label}
       </span>
     );
   };
@@ -171,168 +258,399 @@ const ScrapeManager = () => {
   const formatDate = (dateString) => {
     if (!dateString) return '-';
     const date = new Date(dateString);
-    return date.toLocaleString('vi-VN');
+    return date.toLocaleString('vi-VN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   return (
     <div className="admin-content">
-      <div className="admin-header">
-        <h1>Quản Lý Crawl Dữ Liệu</h1>
-      </div>
-
-      {error && (
-        <div className="error-message" style={{ 
-          padding: '10px', 
-          marginBottom: '20px', 
-          backgroundColor: '#ffebee', 
-          color: '#c62828',
-          borderRadius: '4px' 
+      {/* Toast Notification */}
+      {toast.show && (
+        <div style={{
+          position: 'fixed',
+          top: '16px',
+          right: '16px',
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '12px 16px',
+          backgroundColor: toast.type === 'success' ? '#10b981' : '#ef4444',
+          color: 'white',
+          borderRadius: '8px',
+          boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
         }}>
-          {error}
+          <svg style={{ width: '20px', height: '20px' }} fill="currentColor" viewBox="0 0 20 20">
+            {toast.type === 'success' ? (
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
+            ) : (
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd"/>
+            )}
+          </svg>
+          <span style={{ fontWeight: '500' }}>{toast.message}</span>
         </div>
       )}
 
-      {/* Submit URLs Form */}
-      <div className="card" style={{ marginBottom: '30px' }}>
-        <h2 style={{ marginBottom: '15px' }}>Thêm URL Crawl Mới</h2>
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>URLs (mỗi URL một dòng):</label>
+      <div className="admin-content-header">
+        <h1 className="admin-content-title">Crawl thông tin việc làm</h1>
+        <p className="admin-content-subtitle">Nhập URL để cào dữ liệu việc làm mới</p>
+      </div>
+
+      <div className="scrape-section">
+        {message.text && (
+          <div className={`submit-message ${message.type}`} style={{ marginBottom: '24px' }}>
+            <svg className="message-icon" fill="currentColor" viewBox="0 0 20 20" style={{ width: '20px', height: '20px' }}>
+              {message.type === 'success' || message.type === 'info' ? (
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
+              ) : (
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd"/>
+              )}
+            </svg>
+            {message.text}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} style={{ marginBottom: '32px' }}>
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', color: '#374151' }}>
+              URLs (mỗi URL một dòng)
+            </label>
             <textarea
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
-              placeholder="https://www.topcv.vn/tim-viec-lam-python&#10;https://www.topcv.vn/tim-viec-lam-react"
-              rows="6"
+              placeholder="https://example.com/job1&#10;https://example.com/job2"
+              rows={6}
+              disabled={submitting}
               style={{
                 width: '100%',
-                padding: '10px',
-                border: '1px solid #ddd',
-                borderRadius: '4px',
-                fontFamily: 'monospace',
+                padding: '12px',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
                 fontSize: '14px',
+                fontFamily: 'monospace',
+                resize: 'vertical'
               }}
-              disabled={submitting}
             />
           </div>
+
           <button
             type="submit"
-            className="btn btn-primary"
             disabled={submitting || !urlInput.trim()}
+            style={{
+              padding: '10px 24px',
+              backgroundColor: submitting ? '#9ca3af' : '#3b82f6',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: submitting ? 'not-allowed' : 'pointer',
+            }}
           >
-            {submitting ? 'Đang gửi...' : 'Bắt Đầu Crawl'}
+            {submitting ? 'Đang xử lý...' : 'Bắt đầu cào dữ liệu'}
           </button>
         </form>
+
+        <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#f3f4f6', borderRadius: '8px' }}>
+          <h3 style={{ margin: '0 0 8px 0', fontSize: '14px', fontWeight: '600', color: '#374151' }}>
+            Hướng dẫn:
+          </h3>
+          <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: '#6b7280' }}>
+            <li>Nhập mỗi URL trên một dòng</li>
+            <li>Hệ thống sẽ tự động cào dữ liệu từ các URL đã nhập</li>
+            <li>Bạn có thể theo dõi tiến độ trong bảng bên dưới</li>
+            <li>Sau khi hoàn tất, click "Xem" để xem chi tiết các công việc đã cào</li>
+          </ul>
+        </div>
       </div>
 
-      {/* Jobs List */}
-      <div className="card">
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
-          marginBottom: '20px' 
-        }}>
-          <h2>Lịch Sử Crawl</h2>
-          <button 
-            onClick={fetchJobs} 
-            className="btn btn-secondary"
-            disabled={loading}
-          >
-            {loading ? 'Đang tải...' : 'Làm mới'}
-          </button>
-        </div>
-
-        {loading && jobs.length === 0 ? (
-          <p>Đang tải dữ liệu...</p>
-        ) : jobs.length === 0 ? (
-          <p>Chưa có công việc crawl nào</p>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table>
-              <thead>
+      {/* Recent Jobs Section */}
+      {jobs.length > 0 && (
+        <div style={{ marginTop: '40px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937' }}>
+              Lịch sử cào dữ liệu
+            </h2>
+            <button 
+              onClick={fetchJobs} 
+              disabled={loading}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: '#6b7280',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                fontWeight: '500',
+              }}
+            >
+              {loading ? 'Đang tải...' : 'Làm mới'}
+            </button>
+          </div>
+          
+          <div style={{ 
+            backgroundColor: 'white', 
+            borderRadius: '8px', 
+            boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
+            overflow: 'hidden'
+          }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead style={{ backgroundColor: '#f9fafb' }}>
                 <tr>
-                  <th>ID</th>
-                  <th>Trạng Thái</th>
-                  <th>Tiến Độ</th>
-                  <th>URLs</th>
-                  <th>Công Việc</th>
-                  <th>Tạo Lúc</th>
-                  <th>Hoàn Thành</th>
-                  <th>Lỗi</th>
-                  <th>Thao Tác</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase' }}>URL</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase' }}>Trạng thái</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase' }}>Tiến độ</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase' }}>Thời gian tạo</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase' }}>Hoàn thành</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase' }}>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
-                {jobs.map((job) => (
-                  <tr key={job.id}>
-                    <td style={{ fontFamily: 'monospace', fontSize: '12px' }}>
-                      {job.id.substring(0, 8)}...
-                    </td>
-                    <td>{getStatusBadge(job.status)}</td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{
-                          flex: 1,
-                          height: '20px',
-                          backgroundColor: '#e0e0e0',
-                          borderRadius: '10px',
-                          overflow: 'hidden',
-                          minWidth: '100px',
-                        }}>
-                          <div style={{
-                            height: '100%',
-                            width: `${job.progress || 0}%`,
-                            backgroundColor: job.status === 'completed' ? '#4caf50' : 
-                                           job.status === 'failed' ? '#f44336' : '#2196f3',
-                            transition: 'width 0.3s',
-                          }} />
-                        </div>
-                        <span style={{ fontSize: '12px', whiteSpace: 'nowrap' }}>
-                          {job.progress || 0}%
-                        </span>
+                {jobs.map((job, index) => (
+                  <tr key={job.id} style={{ borderTop: index > 0 ? '1px solid #e5e7eb' : 'none' }}>
+                    <td style={{ padding: '12px 16px', fontSize: '14px', color: '#374151', maxWidth: '300px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        {job.urls && job.urls.length > 0 ? (
+                          <>
+                            <div style={{ fontWeight: '500' }}>{job.urls.length} URL</div>
+                            <div style={{ fontSize: '12px', color: '#6b7280', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {job.urls[0]}
+                              {job.urls.length > 1 && ` +${job.urls.length - 1} more`}
+                            </div>
+                          </>
+                        ) : (
+                          <span style={{ fontSize: '12px', color: '#6b7280' }}>N/A</span>
+                        )}
                       </div>
                     </td>
-                    <td>
-                      {job.processedUrls}/{job.totalUrls}
+                    <td style={{ padding: '12px 16px' }}>
+                      {getStatusBadge(job.status)}
                     </td>
-                    <td>
-                      <strong>{job.jobCount || 0}</strong> jobs
+                    <td style={{ padding: '12px 16px' }}>
+                      {job.status === 'processing' && job.totalUrls > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '120px' }}>
+                          <div style={{ fontSize: '12px', color: '#6b7280' }}>
+                            {job.processedUrls || 0}/{job.totalUrls} URL
+                          </div>
+                          <div style={{ width: '100%', backgroundColor: '#e5e7eb', borderRadius: '4px', height: '6px' }}>
+                            <div 
+                              style={{ 
+                                width: `${job.progress || 0}%`, 
+                                backgroundColor: '#3b82f6', 
+                                height: '6px', 
+                                borderRadius: '4px',
+                                transition: 'width 0.3s ease'
+                              }}
+                            />
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#6b7280' }}>
+                            {job.progress || 0}%
+                          </div>
+                        </div>
+                      ) : job.status === 'completed' ? (
+                        <div style={{ fontSize: '12px', color: '#10b981' }}>
+                          {job.jobCount} công việc
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '12px', color: '#6b7280' }}>-</div>
+                      )}
                     </td>
-                    <td style={{ fontSize: '12px' }}>
+                    <td style={{ padding: '12px 16px', fontSize: '14px', color: '#6b7280' }}>
                       {formatDate(job.createdAt)}
                     </td>
-                    <td style={{ fontSize: '12px' }}>
+                    <td style={{ padding: '12px 16px', fontSize: '14px', color: '#6b7280' }}>
                       {formatDate(job.completedAt)}
                     </td>
-                    <td style={{ 
-                      fontSize: '12px', 
-                      color: job.errorMessage ? '#c62828' : '#666',
-                      maxWidth: '200px',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}>
-                      {job.errorMessage || '-'}
-                    </td>
-                    <td>
-                      <button
-                        onClick={() => handleDelete(job.id)}
-                        className="btn-delete"
-                        style={{
-                          padding: '5px 10px',
-                          fontSize: '12px',
-                        }}
-                      >
-                        Xóa
-                      </button>
+                    <td style={{ padding: '12px 16px' }}>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        {job.status === 'completed' && job.jobCount > 0 && (
+                          <button
+                            onClick={() => handleViewJobUrls(job)}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '6px 12px',
+                              backgroundColor: '#3b82f6',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '6px',
+                              fontSize: '13px',
+                              fontWeight: '500',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                            Xem
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDelete(job.id)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '6px 12px',
+                            backgroundColor: '#ef4444',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '6px',
+                            fontSize: '13px',
+                            fontWeight: '500',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                          Xóa
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* View URLs Modal */}
+      {viewModal.show && viewModal.job && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px'
+          }}
+          onClick={closeViewModal}
+        >
+          <div 
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              padding: '24px',
+              maxWidth: '600px',
+              width: '100%',
+              maxHeight: '80vh',
+              overflow: 'auto',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '600', color: '#1f2937' }}>
+                Danh sách URL đã cào ({viewModal.job.jobCount} công việc)
+              </h3>
+              <button
+                onClick={closeViewModal}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  color: '#6b7280',
+                  padding: '4px',
+                  borderRadius: '4px',
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '12px' }}>
+                Thời gian hoàn thành: {formatDate(viewModal.job.completedAt)}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {viewModal.job.urls && viewModal.job.urls.map((url, index) => (
+                <div key={index} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '12px',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '8px',
+                  backgroundColor: '#f9fafb'
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: '14px',
+                      color: '#3b82f6',
+                      wordBreak: 'break-all',
+                      marginBottom: '4px'
+                    }}>
+                      {url}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#6b7280' }}>
+                      URL {index + 1}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleViewDetail(url)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 16px',
+                      backgroundColor: '#10b981',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                      flexShrink: 0
+                    }}
+                  >
+                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                    Xem công việc
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '24px' }}>
+              <button
+                onClick={closeViewModal}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#6b7280',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                }}
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
