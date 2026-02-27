@@ -46,7 +46,7 @@ def scrape_upload(request):
             progress=0
         )
         
-        job_id = str(scrape_job.pk)
+        job_id = scrape_job.pk
         logger.info(f"Created scrape job with ID: {job_id}")
         
         # Get current host for callback

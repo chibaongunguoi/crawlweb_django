@@ -114,8 +114,6 @@ const ScrapeManager = () => {
       
       // Refresh job list
       fetchJobs();
-      
-      alert('Đã bắt đầu crawl dữ liệu!');
     } catch (err) {
       console.error('Error submitting URLs:', err);
       setError(err.message);

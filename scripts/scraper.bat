@@ -16,3 +16,5 @@ REM Start scraper service
 python main.py
 
 pause
+
+@REM cd server/scraper && venv\Scripts\python main.py

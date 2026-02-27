@@ -3,4 +3,5 @@ django-cors-headers
 bcrypt
 PyJWT
 requests
+pymongo
 # react-router-dom

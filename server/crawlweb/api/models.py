@@ -319,7 +319,9 @@ class Notification(models.Model):
 
 
 class ScrapeJob(models.Model):
+    _id = models.CharField(max_length=24, primary_key=True, db_column='_id', editable=False, blank=True)
     urls = models.JSONField(
+        default=list,
         help_text="Danh sách URLs cần crawl"
     )
     status = models.CharField(
@@ -382,5 +384,11 @@ class ScrapeJob(models.Model):
         ordering = ['-createdAt']
 
     def __str__(self):
-        return f"ScrapeJob {self.id} - {self.status} ({self.processedUrls}/{self.totalUrls})"
+        return f"ScrapeJob {self.pk} - {self.status} ({self.processedUrls}/{self.totalUrls})"
+    
+    def save(self, *args, **kwargs):
+        if not self._id:
+            from bson import ObjectId
+            self._id = str(ObjectId())
+        super().save(*args, **kwargs)
 
