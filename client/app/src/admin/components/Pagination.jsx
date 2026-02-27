@@ -1,12 +1,15 @@
 import React from "react";
 
-export default function Pagination({ currentPage, totalPages, onPageChange }) {
+export default function Pagination({ currentPage, totalPages, totalItems, itemsPerPage, onPageChange }) {
+  // Calculate totalPages if totalItems and itemsPerPage are provided
+  const calculatedTotalPages = totalPages || Math.ceil(totalItems / itemsPerPage) || 1;
+  
   const getPageNumbers = () => {
     const pages = [];
     const maxPagesToShow = 5;
     
-    if (totalPages <= maxPagesToShow) {
-      for (let i = 1; i <= totalPages; i++) {
+    if (calculatedTotalPages <= maxPagesToShow) {
+      for (let i = 1; i <= calculatedTotalPages; i++) {
         pages.push(i);
       }
     } else {
@@ -15,11 +18,11 @@ export default function Pagination({ currentPage, totalPages, onPageChange }) {
           pages.push(i);
         }
         pages.push('...');
-        pages.push(totalPages);
-      } else if (currentPage >= totalPages - 2) {
+        pages.push(calculatedTotalPages);
+      } else if (currentPage >= calculatedTotalPages - 2) {
         pages.push(1);
         pages.push('...');
-        for (let i = totalPages - 3; i <= totalPages; i++) {
+        for (let i = calculatedTotalPages - 3; i <= calculatedTotalPages; i++) {
           pages.push(i);
         }
       } else {
@@ -29,12 +32,16 @@ export default function Pagination({ currentPage, totalPages, onPageChange }) {
           pages.push(i);
         }
         pages.push('...');
-        pages.push(totalPages);
+        pages.push(calculatedTotalPages);
       }
     }
     
     return pages;
   };
+
+  if (calculatedTotalPages <= 1) {
+    return null;
+  }
 
   return (
     <div className="pagination">
@@ -61,7 +68,7 @@ export default function Pagination({ currentPage, totalPages, onPageChange }) {
       
       <button 
         onClick={() => onPageChange(currentPage + 1)}
-        disabled={currentPage === totalPages}
+        disabled={currentPage === calculatedTotalPages}
       >
         Sau
       </button>

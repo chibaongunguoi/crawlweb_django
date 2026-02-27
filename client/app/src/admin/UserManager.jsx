@@ -1,33 +1,21 @@
 import React, { useEffect, useState } from "react";
-import "../admin.css";
+import "./admin.css";
 import Pagination from "./components/Pagination";
+import EditUserProfileForm from "../ui/components/EditUserProfileForm";
+import UserSearch from "./components/UserSearch";
 
 export default function UserManager() {
   const [users, setUsers] = useState([]);
-  const [filteredUsers, setFilteredUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
-  const [searchTerm, setSearchTerm] = useState("");
   const itemsPerPage = 20;
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingUserId, setEditingUserId] = useState(null);
+  const [filteredUsers, setFilteredUsers] = useState([]);
 
   useEffect(() => {
     fetchUsers();
   }, []);
-
-  useEffect(() => {
-    // Filter users based on search term
-    if (searchTerm.trim() === "") {
-      setFilteredUsers(users);
-    } else {
-      const filtered = users.filter(user => 
-        user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (user.profile?.name && user.profile.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        user.role.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-      setFilteredUsers(filtered);
-      setCurrentPage(1);
-    }
-  }, [searchTerm, users]);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -36,29 +24,54 @@ export default function UserManager() {
         credentials: 'include'
       });
       
-      console.log('Response status:', response.status); // Debug
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Users data:', data); // Debug
-        setUsers(data.users || []);
-      } else {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('Error fetching users:', response.status, errorData);
-        alert(`Lỗi: ${errorData.error || 'Không thể tải danh sách người dùng'}`);
+      if (!response.ok) {
+        console.error('Response not ok:', response.status, response.statusText);
         setUsers([]);
+        return;
       }
+
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        console.error('Response is not JSON:', contentType);
+        setUsers([]);
+        return;
+      }
+
+      const text = await response.text();
+      if (!text) {
+        console.error('Empty response body');
+        setUsers([]);
+        return;
+      }
+
+      const data = JSON.parse(text);
+      setUsers(data.users || []);
     } catch (error) {
       console.error('Error fetching users:', error);
-      alert('Lỗi kết nối: ' + error.message);
       setUsers([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async (userId, username) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa người dùng "${username}"?`)) {
+  const handleEdit = (user) => {
+    setEditingUserId(user.username);
+    setShowEditModal(true);
+  };
+
+  const handleCloseEditModal = () => {
+    setShowEditModal(false);
+    setEditingUserId(null);
+  };
+
+  const handleSaveProfile = () => {
+    setShowEditModal(false);
+    setEditingUserId(null);
+    fetchUsers(); // Refresh the list
+  };
+
+  const handleDelete = async (userId) => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa người dùng này?')) {
       return;
     }
 
@@ -68,11 +81,12 @@ export default function UserManager() {
         credentials: 'include'
       });
 
-      if (response.ok) {
+      const data = await response.json();
+
+      if (response.ok && data.success) {
         alert('Xóa người dùng thành công!');
         fetchUsers();
       } else {
-        const data = await response.json();
         alert(data.error || 'Có lỗi xảy ra khi xóa người dùng');
       }
     } catch (error) {
@@ -80,11 +94,6 @@ export default function UserManager() {
       alert('Có lỗi xảy ra khi xóa người dùng');
     }
   };
-
-  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedUsers = filteredUsers.slice(startIndex, endIndex);
 
   return (
     <div>
@@ -101,7 +110,7 @@ export default function UserManager() {
       ) : (
         <div className="users-section">
           <div className="users-header">
-            <h2>Danh sách tài khoản ({filteredUsers.length})</h2>
+            <h2>danh sách tài khoản ({filteredUsers.length})</h2>
             <button className="refresh-btn" onClick={fetchUsers}>
               <svg className="refresh-icon" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd"/>
@@ -110,71 +119,133 @@ export default function UserManager() {
             </button>
           </div>
 
-          <div className="search-box">
-            <input
-              type="text"
-              className="search-input"
-              placeholder="Tìm kiếm theo tên, username hoặc vai trò..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
+          <UserSearch 
+            users={users}
+            onFilteredResults={setFilteredUsers}
+          />
           
           <div className="users-table-container">
             <table className="users-table">
               <thead>
                 <tr>
-                  <th>Username</th>
-                  <th>Tên</th>
+                  <th>Avatar</th>
+                  <th>Tên người dùng</th>
                   <th>Vai trò</th>
                   <th>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
-                {paginatedUsers.length === 0 ? (
+                {filteredUsers.length === 0 ? (
                   <tr>
                     <td colSpan="4" className="no-users">
                       Không tìm thấy người dùng nào
                     </td>
                   </tr>
                 ) : (
-                  paginatedUsers.map((user) => (
-                    <tr key={user.id} className="user-row">
-                      <td>
-                        <div className="user-info">
-                          <span className="user-name">{user.username}</span>
-                        </div>
-                      </td>
-                      <td>{user.profile?.name || 'N/A'}</td>
-                      <td>
-                        <span className={`role-badge ${user.role}`}>
-                          {user.role === 'admin' ? 'Admin' : user.role === 'company' ? 'Công ty' : 'Người dùng'}
-                        </span>
-                      </td>
-                      <td>
-                        <div className="action-buttons">
-                          <button
-                            className="delete-btn"
-                            onClick={() => handleDelete(user.id, user.username)}
-                          >
-                            Xóa
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                  (() => {
+                    const startIndex = (currentPage - 1) * itemsPerPage;
+                    const endIndex = startIndex + itemsPerPage;
+                    const paginatedUsers = filteredUsers.slice(startIndex, endIndex);
+                    
+                    return paginatedUsers.map((user) => (
+                      <tr key={user.id} className="user-row">
+                        <td>
+                          <div className="user-avatar">
+                            <div className="avatar-circle">
+                              {user.username?.charAt(0)?.toUpperCase() || 'U'}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="username-cell">
+                          <div className="username-info">
+                            <span className="username">{user.username}</span>
+                            <span className="user-id">ID: {user.id}</span>
+                          </div>
+                        </td>
+                        <td>
+                          <span className={`role-badge`}>
+                            {user.role === 'admin' ? 'Quản trị viên' : user.role === 'company' ? 'Công ty' : 'Người dùng'}
+                          </span>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                              onClick={() => handleEdit(user)}
+                              className="edit-company-btn"
+                              style={{ padding: '6px 12px', fontSize: '12px' }}
+                              title="Chỉnh sửa"
+                            >
+                              <svg className="edit-icon" fill="currentColor" viewBox="0 0 20 20" width="14" height="14">
+                                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/>
+                              </svg>
+                            </button>
+                            {user.role !== 'admin' && (
+                              <button
+                                onClick={() => handleDelete(user.id)}
+                                className="delete-company-btn"
+                                style={{ padding: '6px 12px', fontSize: '12px' }}
+                                title="Xóa"
+                              >
+                                <svg className="delete-icon" fill="currentColor" viewBox="0 0 20 20" width="14" height="14">
+                                  <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd"/>
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ));
+                  })()
                 )}
               </tbody>
             </table>
           </div>
 
-          {totalPages > 1 && (
-            <Pagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              onPageChange={setCurrentPage}
+          <Pagination
+            currentPage={currentPage}
+            totalItems={filteredUsers.length}
+            itemsPerPage={itemsPerPage}
+            onPageChange={setCurrentPage}
+          />
+        </div>
+      )}
+
+      {/* Edit User Profile Modal */}
+      {showEditModal && editingUserId && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px'
+          }}
+          onClick={handleCloseEditModal}
+        >
+          <div 
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              maxWidth: '650px',
+              width: '100%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <EditUserProfileForm
+              userId={editingUserId}
+              onSave={handleSaveProfile}
+              onCancel={handleCloseEditModal}
             />
-          )}
+          </div>
         </div>
       )}
     </div>
