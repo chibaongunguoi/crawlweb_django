@@ -21,7 +21,10 @@ import bcrypt
 import jwt
 import datetime
 import logging
+import os
 from django.conf import settings
+from django.core.files.storage import default_storage
+from django.core.files.base import ContentFile
 from bson import ObjectId
 
 logger = logging.getLogger(__name__)
@@ -280,7 +283,53 @@ def get_user_from_token(request):
 
 # ==================== USER PROFILE APIs ====================
 
-@api_view(['GET', 'PUT'])
+@api_view(['POST'])
+def upload_cv(request):
+    """Upload CV file"""
+    user = get_user_from_token(request)
+    if not user:
+        return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    if 'cv' not in request.FILES:
+        return Response({'error': 'No file uploaded'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    cv_file = request.FILES['cv']
+    
+    # Validate file type
+    if not cv_file.name.endswith('.pdf'):
+        return Response({'error': 'Chỉ chấp nhận file PDF'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate file size (5MB)
+    if cv_file.size > 5 * 1024 * 1024:
+        return Response({'error': 'File phải nhỏ hơn 5MB'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        # Create uploads directory if not exists
+        upload_dir = os.path.join(settings.MEDIA_ROOT, 'cv')
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        # Generate unique filename
+        filename = f"{user.username}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        file_path = os.path.join('cv', filename)
+        
+        # Save file
+        saved_path = default_storage.save(file_path, ContentFile(cv_file.read()))
+        
+        # Return URL
+        file_url = request.build_absolute_uri(settings.MEDIA_URL + saved_path)
+        
+        return Response({
+            'success': True,
+            'url': file_url,
+            'filename': filename
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Upload CV error: {e}")
+        return Response({'error': 'Có lỗi khi tải file'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'PUT', 'POST'])
 def user_profile(request):
     """Get or update user profile"""
     user = get_user_from_token(request)
@@ -290,34 +339,181 @@ def user_profile(request):
     if request.method == 'GET':
         try:
             profile = UserProfile.objects.get(userID=user.username)
-            serializer = UserProfileSerializer(profile)
-            return Response({'success': True, 'data': serializer.data}, status=status.HTTP_200_OK)
+            # Return data directly without serializer to avoid ObjectId issues
+            return Response({
+                'success': True,
+                'data': {
+                    'userID': profile.userID,
+                    'name': profile.name,
+                    'phone': profile.phone,
+                    'gender': profile.gender,
+                    'birthdate': str(profile.birthdate) if profile.birthdate else None,
+                    'cv': profile.cv,
+                    'description': profile.description
+                }
+            }, status=status.HTTP_200_OK)
         except UserProfile.DoesNotExist:
             return Response({'success': True, 'data': None}, status=status.HTTP_200_OK)
+        except UserProfile.MultipleObjectsReturned:
+            # Handle duplicate records - get the one with data (not empty)
+            logger.warning(f"Multiple UserProfile found for {user.username}, cleaning up duplicates")
+            profiles = UserProfile.objects.filter(userID=user.username).order_by('-id')
+            # Find profile with data (name is not null)
+            profile = None
+            for p in profiles:
+                if p.name:  # Has data
+                    profile = p
+                    break
+            if not profile:
+                profile = profiles.first()  # Fallback if all empty
+            # Delete duplicates
+            UserProfile.objects.filter(userID=user.username).exclude(pk=profile.pk).delete()
+            return Response({
+                'success': True,
+                'data': {
+                    'userID': profile.userID,
+                    'name': profile.name,
+                    'phone': profile.phone,
+                    'gender': profile.gender,
+                    'birthdate': str(profile.birthdate) if profile.birthdate else None,
+                    'cv': profile.cv,
+                    'description': profile.description
+                }
+            }, status=status.HTTP_200_OK)
     
-    elif request.method == 'PUT':
+    elif request.method == 'POST':
+        # POST: Tạo mới profile (nếu đã có thì cập nhật)
         try:
-            profile, created = UserProfile.objects.get_or_create(userID=user.username)
+            logger.info(f"Creating/Updating profile for user: {user.username}")
+            logger.info(f"Request data: {request.data}")
+            
+            # Check if profile exists
+            try:
+                profile = UserProfile.objects.get(userID=user.username)
+                created = False
+                logger.info(f"Profile already exists, will update it")
+            except UserProfile.DoesNotExist:
+                profile = UserProfile(userID=user.username)
+                created = True
+                logger.info(f"Creating new profile")
+            except UserProfile.MultipleObjectsReturned:
+                # Handle duplicate records
+                logger.warning(f"Multiple UserProfile found for {user.username}, cleaning up duplicates")
+                profiles = UserProfile.objects.filter(userID=user.username).order_by('-id')
+                profile = None
+                for p in profiles:
+                    if p.name:
+                        profile = p
+                        break
+                if not profile:
+                    profile = profiles.first()
+                UserProfile.objects.filter(userID=user.username).exclude(pk=profile.pk).delete()
+                created = False
             
             # Update fields
-            profile.name = request.data.get('name', profile.name)
-            profile.phone = request.data.get('phone', profile.phone)
-            profile.gender = request.data.get('gender', profile.gender)
+            profile.name = request.data.get('name')
+            profile.phone = request.data.get('phone')
+            profile.gender = request.data.get('gender', 'nam')
             
+            # Handle birthdate
             birthdate = request.data.get('birthdate')
-            if birthdate:
+            if birthdate and birthdate.strip():
                 profile.birthdate = birthdate
+            else:
+                profile.birthdate = None
             
-            profile.cv = request.data.get('cv', profile.cv)
-            profile.description = request.data.get('description', profile.description)
+            profile.cv = request.data.get('cv', '')
+            profile.description = request.data.get('description', '')
             
+            # Save
             profile.save()
             
-            serializer = UserProfileSerializer(profile)
-            return Response({'success': True, 'data': serializer.data}, status=status.HTTP_200_OK)
+            logger.info(f"Profile {'created' if created else 'updated'} successfully for user: {user.username}")
+            
+            return Response({
+                'success': True,
+                'message': 'Thêm thông tin thành công!' if created else 'Cập nhật thông tin thành công!',
+                'data': {
+                    'userID': profile.userID,
+                    'name': profile.name,
+                    'phone': profile.phone,
+                    'gender': profile.gender,
+                    'birthdate': str(profile.birthdate) if profile.birthdate else None,
+                    'cv': profile.cv,
+                    'description': profile.description
+                }
+            }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Create/Update profile error: {e}")
+            logger.exception("Full traceback:")
+            return Response({'error': f'Lỗi khi lưu thông tin: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    elif request.method == 'PUT':
+        # PUT: Cập nhật profile (nếu chưa có thì tạo mới)
+        try:
+            logger.info(f"Updating profile for user: {user.username}")
+            logger.info(f"Request data: {request.data}")
+            
+            # Get or create profile
+            try:
+                profile = UserProfile.objects.get(userID=user.username)
+                created = False
+                logger.info(f"Updating existing profile")
+            except UserProfile.DoesNotExist:
+                profile = UserProfile(userID=user.username)
+                created = True
+                logger.info(f"Profile not found, creating new one")
+            except UserProfile.MultipleObjectsReturned:
+                # Handle duplicate records
+                logger.warning(f"Multiple UserProfile found for {user.username}, cleaning up duplicates")
+                profiles = UserProfile.objects.filter(userID=user.username).order_by('-id')
+                profile = None
+                for p in profiles:
+                    if p.name:
+                        profile = p
+                        break
+                if not profile:
+                    profile = profiles.first()
+                UserProfile.objects.filter(userID=user.username).exclude(pk=profile.pk).delete()
+                created = False
+            
+            # Update fields
+            profile.name = request.data.get('name')
+            profile.phone = request.data.get('phone')
+            profile.gender = request.data.get('gender', 'nam')
+            
+            # Handle birthdate
+            birthdate = request.data.get('birthdate')
+            if birthdate and birthdate.strip():
+                profile.birthdate = birthdate
+            else:
+                profile.birthdate = None
+            
+            profile.cv = request.data.get('cv', '')
+            profile.description = request.data.get('description', '')
+            
+            # Save
+            profile.save()
+            
+            logger.info(f"Profile {'created' if created else 'updated'} successfully for user: {user.username}")
+            
+            return Response({
+                'success': True,
+                'message': 'Thêm thông tin thành công!' if created else 'Cập nhật thông tin thành công!',
+                'data': {
+                    'userID': profile.userID,
+                    'name': profile.name,
+                    'phone': profile.phone,
+                    'gender': profile.gender,
+                    'birthdate': str(profile.birthdate) if profile.birthdate else None,
+                    'cv': profile.cv,
+                    'description': profile.description
+                }
+            }, status=status.HTTP_200_OK)
         except Exception as e:
             logger.error(f"Update profile error: {e}")
-            return Response({'error': 'Lỗi khi cập nhật profile'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Full traceback:")
+            return Response({'error': f'Lỗi khi cập nhật profile: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # ==================== COMPANY APIs ====================

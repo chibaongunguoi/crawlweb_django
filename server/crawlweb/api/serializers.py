@@ -26,9 +26,18 @@ class JobDetailSerializer(serializers.ModelSerializer):
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
+    id = serializers.CharField(read_only=True)
+    
     class Meta:
         model = UserProfile
-        fields = '__all__'
+        fields = ['id', 'userID', 'name', 'phone', 'gender', 'birthdate', 'cv', 'description']
+        
+    def to_representation(self, instance):
+        """Convert ObjectId to string"""
+        data = super().to_representation(instance)
+        if data.get('id'):
+            data['id'] = str(data['id'])
+        return data
 
 
 class CompanySerializer(serializers.ModelSerializer):

@@ -2,7 +2,7 @@
 from django.urls import include, path
 from .views import (
     getJobDetail, login, get_user, logout, register,
-    user_profile, get_companies, update_company,
+    user_profile, upload_cv, get_companies, update_company,
     user_applications, application_detail, company_applications,
     user_favorites, delete_favorite, change_password
 )
@@ -17,6 +17,7 @@ urlpatterns = [
     
     # User profile
     path("user/profile/", user_profile, name="user_profile"),
+    path("user/profile/upload-cv/", upload_cv, name="upload_cv"),
     path("user/change-password/", change_password, name="change_password"),
     
     # Company

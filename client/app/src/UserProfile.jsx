@@ -24,13 +24,15 @@ export default function UserProfile() {
   const [profileForm, setProfileForm] = useState({
     name: '',
     phone: '',
-    gender: '',
+    gender: 'nam',
     birthdate: '',
     cv: '',
     description: ''
   });
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState({ type: '', text: '' });
+  const [uploading, setUploading] = useState(false);
+  const [cvFile, setCvFile] = useState(null);
 
   // Fetch user from API using cookie authentication
   useEffect(() => {
@@ -72,18 +74,26 @@ export default function UserProfile() {
 
   // Fetch user profile
   const fetchUserProfile = async () => {
-    if (!user?.username) return;
+    if (!user?.username) {
+      console.log('fetchUserProfile: no username');
+      return;
+    }
     try {
       setProfileLoading(true);
+      console.log('fetchUserProfile: fetching for user', user.username);
       const res = await fetch('http://localhost:8000/api/user/profile/', {
         method: 'GET',
         credentials: 'include'
       });
+      console.log('fetchUserProfile: response status', res.status);
       if (!res.ok) {
+        console.log('fetchUserProfile: response not ok, setting userProfile to null');
         setUserProfile(null);
         return;
       }
       const data = await res.json();
+      console.log('fetchUserProfile: received data', data);
+      console.log('fetchUserProfile: setting userProfile to', data.data);
       setUserProfile(data.data || null);
     } catch (err) {
       console.error('Error fetching user profile:', err);
@@ -126,8 +136,8 @@ export default function UserProfile() {
       setProfileForm({
         name: userProfile.name || '',
         phone: userProfile.phone || '',
-        gender: userProfile.gender || '',
-        birthdate: userProfile.birthdate || '',
+        gender: userProfile.gender || 'nam',
+        birthdate: userProfile.birthdate ? new Date(userProfile.birthdate).toISOString().slice(0,10) : '',
         cv: userProfile.cv || '',
         description: userProfile.description || ''
       });
@@ -135,7 +145,7 @@ export default function UserProfile() {
       setProfileForm({
         name: '',
         phone: '',
-        gender: '',
+        gender: 'nam',
         birthdate: '',
         cv: '',
         description: ''
@@ -150,12 +160,14 @@ export default function UserProfile() {
     setProfileForm({
       name: '',
       phone: '',
-      gender: '',
+      gender: 'nam',
       birthdate: '',
       cv: '',
       description: ''
     });
     setProfileMessage({ type: '', text: '' });
+    setCvFile(null);
+    setUploading(false);
   };
 
   const handleProfileFormChange = (e) => {
@@ -164,6 +176,63 @@ export default function UserProfile() {
     if (profileMessage.text) {
       setProfileMessage({ type: '', text: '' });
     }
+  };
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (file.type !== "application/pdf") {
+      setProfileMessage({ type: 'error', text: 'Chỉ chấp nhận file PDF' });
+      e.target.value = '';
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setProfileMessage({ type: 'error', text: 'File phải nhỏ hơn 5MB' });
+      e.target.value = '';
+      return;
+    }
+
+    setCvFile(file);
+    setProfileMessage({ type: '', text: '' });
+
+    // Auto-upload the file
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('cv', file);
+
+      const res = await fetch('http://localhost:8000/api/user/profile/upload-cv/', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setProfileForm(prev => ({ ...prev, cv: data.url }));
+        setProfileMessage({ type: 'success', text: 'Tải file CV thành công' });
+      } else {
+        setProfileMessage({ type: 'error', text: data.error || 'Tải file thất bại' });
+        setCvFile(null);
+        e.target.value = '';
+      }
+    } catch (err) {
+      console.error('Upload error:', err);
+      setProfileMessage({ type: 'error', text: 'Có lỗi khi tải file' });
+      setCvFile(null);
+      e.target.value = '';
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleRemoveCV = () => {
+    setProfileForm(prev => ({ ...prev, cv: '' }));
+    setCvFile(null);
   };
 
   const handleSaveProfile = async (e) => {
@@ -179,22 +248,40 @@ export default function UserProfile() {
     try {
       setProfileSaving(true);
       const method = userProfile ? 'PUT' : 'POST';
+      
+      // Clean data - remove empty strings
+      const cleanedData = {
+        name: profileForm.name,
+        phone: profileForm.phone,
+        gender: profileForm.gender,
+        birthdate: profileForm.birthdate || null,
+        cv: profileForm.cv || '',
+        description: profileForm.description || ''
+      };
+      
+      console.log('Saving profile with data:', cleanedData);
+      
       const response = await fetch('http://localhost:8000/api/user/profile/', {
         method: method,
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(profileForm)
+        body: JSON.stringify(cleanedData)
       });
 
       const data = await response.json();
+      console.log('Response:', response.status, data);
+      
       if (response.ok) {
-        setProfileMessage({ type: 'success', text: userProfile ? 'Cập nhật thông tin thành công!' : 'Thêm thông tin thành công!' });
+        // Use message from backend if available
+        const successMessage = data.message || (userProfile ? 'Cập nhật thông tin thành công!' : 'Thêm thông tin thành công!');
+        setProfileMessage({ type: 'success', text: successMessage });
         await fetchUserProfile();
         setTimeout(() => {
           setIsEditingProfile(false);
           setProfileMessage({ type: '', text: '' });
         }, 1500);
       } else {
+        console.error('Save profile error:', data);
         setProfileMessage({ type: 'error', text: data.error || 'Có lỗi xảy ra khi lưu thông tin' });
       }
     } catch (error) {
@@ -462,6 +549,7 @@ export default function UserProfile() {
                 </button>
               )}
             </div>
+            {console.log('Rendering profile tab - userProfile:', userProfile, 'profileLoading:', profileLoading, 'isEditingProfile:', isEditingProfile)}
 
             <div className="profile-card">
               {profileLoading ? (
@@ -525,92 +613,143 @@ export default function UserProfile() {
                     </div>
                   )}
 
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label htmlFor="name">Họ & tên: <span className="required">*</span></label>
-                      <input
-                        type="text"
-                        id="name"
-                        name="name"
-                        className="form-input"
-                        placeholder="Nhập họ và tên"
-                        value={profileForm.name}
-                        onChange={handleProfileFormChange}
-                        disabled={profileSaving}
-                        required
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label htmlFor="phone">Số điện thoại: <span className="required">*</span></label>
-                      <input
-                        type="tel"
-                        id="phone"
-                        name="phone"
-                        className="form-input"
-                        placeholder="Nhập số điện thoại"
-                        value={profileForm.phone}
-                        onChange={handleProfileFormChange}
-                        disabled={profileSaving}
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label htmlFor="gender">Giới tính:</label>
-                      <select
-                        id="gender"
-                        name="gender"
-                        className="form-input"
-                        value={profileForm.gender}
-                        onChange={handleProfileFormChange}
-                        disabled={profileSaving}
-                      >
-                        <option value="">Chọn giới tính</option>
-                        <option value="male">Nam</option>
-                        <option value="female">Nữ</option>
-                        <option value="other">Khác</option>
-                      </select>
-                    </div>
-
-                    <div className="form-group">
-                      <label htmlFor="birthdate">Ngày sinh:</label>
-                      <input
-                        type="date"
-                        id="birthdate"
-                        name="birthdate"
-                        className="form-input"
-                        value={profileForm.birthdate}
-                        onChange={handleProfileFormChange}
-                        disabled={profileSaving}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label htmlFor="cv">Link CV:</label>
+                  <div className="end-form-group">
+                    <label htmlFor="name">Họ & tên</label>
                     <input
-                      type="url"
-                      id="cv"
-                      name="cv"
+                      type="text"
+                      id="name"
+                      name="name"
                       className="form-input"
-                      placeholder="Nhập link đến CV của bạn"
-                      value={profileForm.cv}
+                      placeholder="Nhập họ và tên"
+                      value={profileForm.name}
                       onChange={handleProfileFormChange}
                       disabled={profileSaving}
                     />
                   </div>
 
-                  <div className="form-group">
-                    <label htmlFor="description">Mô tả bản thân:</label>
+                  <div className="end-form-group">
+                    <label htmlFor="phone">Số điện thoại</label>
+                    <input
+                      type="tel"
+                      id="phone"
+                      name="phone"
+                      className="form-input"
+                      placeholder="Nhập số điện thoại"
+                      value={profileForm.phone}
+                      onChange={handleProfileFormChange}
+                      disabled={profileSaving}
+                    />
+                  </div>
+
+                  <div className="end-form-group">
+                    <label>Giới tính</label>
+                    <div className="radio-group">
+                      <label className="radio-label">
+                        <input
+                          type="radio"
+                          name="gender"
+                          value="nam"
+                          checked={profileForm.gender === 'nam'}
+                          onChange={handleProfileFormChange}
+                          className="radio-input"
+                          disabled={profileSaving}
+                        />
+                        <span>Nam</span>
+                      </label>
+                      <label className="radio-label">
+                        <input
+                          type="radio"
+                          name="gender"
+                          value="nữ"
+                          checked={profileForm.gender === 'nữ'}
+                          onChange={handleProfileFormChange}
+                          className="radio-input"
+                          disabled={profileSaving}
+                        />
+                        <span>Nữ</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="end-form-group">
+                    <label htmlFor="birthdate">Ngày sinh</label>
+                    <input
+                      type="date"
+                      id="birthdate"
+                      name="birthdate"
+                      className="form-input"
+                      value={profileForm.birthdate}
+                      onChange={handleProfileFormChange}
+                      disabled={profileSaving}
+                    />
+                  </div>
+
+                  <div className="end-form-group">
+                    <label>CV (File PDF)</label>
+                    {profileForm.cv && !uploading && (
+                      <div className="cv-current-file">
+                        <div className="cv-file-info">
+                          <svg className="cv-file-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                          </svg>
+                          <a
+                            href={profileForm.cv}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="cv-file-link"
+                          >
+                            CV hiện tại
+                          </a>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleRemoveCV}
+                          className="cv-remove-btn"
+                          title="Xóa CV"
+                          disabled={profileSaving}
+                        >
+                          <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd"/>
+                          </svg>
+                        </button>
+                      </div>
+                    )}
+                    <div className="cv-upload-wrapper">
+                      <input
+                        type="file"
+                        id="cv-file-input-user"
+                        accept=".pdf,application/pdf"
+                        onChange={handleFileChange}
+                        disabled={uploading || profileSaving}
+                        className="cv-file-input"
+                      />
+                      <label
+                        htmlFor="cv-file-input-user"
+                        className={`cv-upload-label ${(uploading || profileSaving) ? 'disabled' : ''}`}
+                      >
+                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        {uploading ? 'Đang tải lên...' : (profileForm.cv ? 'Tải file mới' : 'Chọn file PDF')}
+                      </label>
+                    </div>
+                    {uploading && (
+                      <div className="upload-status">
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 border-t-blue-600"></div>
+                        <span>Đang tải lên...</span>
+                      </div>
+                    )}
+                    <small className="muted">Chỉ chấp nhận file PDF, tối đa 5MB</small>
+                  </div>
+
+                  <div className="end-form-group">
+                    <label htmlFor="description">Mô tả</label>
                     <textarea
                       id="description"
                       name="description"
-                      className="form-textarea"
+                      className="form-input"
                       placeholder="Giới thiệu về bản thân, kinh nghiệm, kỹ năng..."
-                      rows="5"
+                      rows="6"
                       value={profileForm.description}
                       onChange={handleProfileFormChange}
                       disabled={profileSaving}
@@ -618,18 +757,11 @@ export default function UserProfile() {
                   </div>
 
                   <div className="form-actions">
-                    <button type="button" className="cancel-btn" onClick={handleCancelEdit} disabled={profileSaving}>
-                      Hủy
+                    <button type="submit" className="update-btn" disabled={profileSaving || uploading}>
+                      {profileSaving ? 'Đang lưu...' : 'Lưu thay đổi'}
                     </button>
-                    <button type="submit" className="save-btn" disabled={profileSaving}>
-                      {profileSaving ? (
-                        <div className="button-loading">
-                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                          Đang lưu...
-                        </div>
-                      ) : (
-                        userProfile ? 'Lưu thay đổi' : 'Thêm thông tin'
-                      )}
+                    <button type="button" className="cancel-link-btn" onClick={handleCancelEdit} disabled={profileSaving}>
+                      Hủy
                     </button>
                   </div>
                 </form>
@@ -646,11 +778,11 @@ export default function UserProfile() {
                     </div>
                     <div className="detail-row">
                       <label>Giới tính:</label>
-                      <span>{userProfile.gender ? userProfile.gender.charAt(0).toUpperCase() + userProfile.gender.slice(1) : 'N/A'}</span>
+                      <span>{userProfile.gender ? (userProfile.gender === 'nam' ? 'Nam' : userProfile.gender === 'nữ' ? 'Nữ' : userProfile.gender.charAt(0).toUpperCase() + userProfile.gender.slice(1)) : 'N/A'}</span>
                     </div>
                     <div className="detail-row">
                       <label>Ngày sinh:</label>
-                      <span>{userProfile.birthdate ? new Date(userProfile.birthdate).toLocaleDateString() : 'N/A'}</span>
+                      <span>{userProfile.birthdate ? new Date(userProfile.birthdate).toLocaleDateString('vi-VN') : 'N/A'}</span>
                     </div>
                     <div className="detail-row">
                       <label>CV:</label>
