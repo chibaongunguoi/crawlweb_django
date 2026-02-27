@@ -1,5 +1,20 @@
 # Ignore MongoDB data directory
 var/mongodb/
+
+# Node modules
 client/app/node_modules/
-server/crawlweb/api/__pycache__
-.log
+node_modules/
+
+# Python cache
+server/crawlweb/api/__pycache__/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Log files
+*.log
+
+# IDE
+.vscode/
+.idea/

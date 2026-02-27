@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import JobDetail, User
+from .models import JobDetail, User, UserProfile, Company, Application, Follow
 import json
 
 
@@ -23,3 +23,27 @@ class JobDetailSerializer(serializers.ModelSerializer):
             except (json.JSONDecodeError, ValueError):
                 return []
         return obj.skills if obj.skills else []
+
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserProfile
+        fields = '__all__'
+
+
+class CompanySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Company
+        fields = '__all__'
+
+
+class ApplicationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Application
+        fields = '__all__'
+
+
+class FollowSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Follow
+        fields = '__all__'

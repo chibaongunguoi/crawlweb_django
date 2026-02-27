@@ -98,6 +98,180 @@ class JobDetail(models.Model):
         db_table = 'JobDetail'
         verbose_name = 'Job Detail'
         verbose_name_plural = 'Job Details'
+
+    def __str__(self):
+        return f"{self.job_title} - {self.company_name}"
+
+
+class UserProfile(models.Model):
+    userID = models.CharField(
+        max_length=255,
+        unique=True,
+        db_index=True,
+        help_text="Username của user"
+    )
+    name = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Họ và tên"
+    )
+    phone = models.CharField(
+        max_length=20,
+        blank=True,
+        null=True,
+        help_text="Số điện thoại"
+    )
+    gender = models.CharField(
+        max_length=10,
+        choices=[
+            ('nam', 'Nam'),
+            ('nữ', 'Nữ'),
+            ('other', 'Khác'),
+        ],
+        default='nam',
+        help_text="Giới tính"
+    )
+    birthdate = models.DateField(
+        blank=True,
+        null=True,
+        help_text="Ngày sinh"
+    )
+    cv = models.CharField(
+        max_length=500,
+        blank=True,
+        null=True,
+        help_text="Link CV"
+    )
+    description = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Mô tả bản thân"
+    )
+
+    class Meta:
+        db_table = 'UserProfile'
+        verbose_name = 'User Profile'
+        verbose_name_plural = 'User Profiles'
+
+    def __str__(self):
+        return f"{self.name or self.userID}"
+
+
+class Company(models.Model):
+    username = models.CharField(
+        max_length=150,
+        db_index=True,
+        help_text="Username của công ty"
+    )
+    name = models.CharField(
+        max_length=255,
+        help_text="Tên công ty"
+    )
+    email = models.EmailField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Email công ty"
+    )
+    phone = models.CharField(
+        max_length=20,
+        blank=True,
+        null=True,
+        help_text="Số điện thoại"
+    )
+    website = models.URLField(
+        max_length=500,
+        blank=True,
+        null=True,
+        help_text="Website công ty"
+    )
+    address = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Địa chỉ"
+    )
+    logo = models.CharField(
+        max_length=500,
+        blank=True,
+        null=True,
+        help_text="Link logo"
+    )
+    description = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Mô tả công ty"
+    )
+
+    class Meta:
+        db_table = 'Company'
+        verbose_name = 'Company'
+        verbose_name_plural = 'Companies'
+
+    def __str__(self):
+        return self.name
+
+
+class Application(models.Model):
+    userID = models.CharField(
+        max_length=150,
+        db_index=True,
+        help_text="Username của người ứng tuyển"
+    )
+    JobDetailID = models.CharField(
+        max_length=255,
+        db_index=True,
+        help_text="ID của JobDetail"
+    )
+    status = models.CharField(
+        max_length=50,
+        default='chưa duyệt',
+        help_text="Trạng thái: chưa duyệt, đã duyệt, đã từ chối"
+    )
+    time = models.DateTimeField(
+        auto_now_add=True,
+        help_text="Thời gian ứng tuyển"
+    )
+    content = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Nội dung thông báo từ công ty"
+    )
+
+    class Meta:
+        db_table = 'Application'
+        verbose_name = 'Application'
+        verbose_name_plural = 'Applications'
+        unique_together = ['userID', 'JobDetailID']
+
+    def __str__(self):
+        return f"{self.userID} - {self.JobDetailID}"
+
+
+class Follow(models.Model):
+    userID = models.CharField(
+        max_length=150,
+        db_index=True,
+        help_text="Username của người dùng"
+    )
+    JobDetailID = models.CharField(
+        max_length=255,
+        db_index=True,
+        help_text="ID của JobDetail"
+    )
+    time = models.DateTimeField(
+        auto_now_add=True,
+        help_text="Thời gian lưu"
+    )
+
+    class Meta:
+        db_table = 'Follow'
+        verbose_name = 'Follow'
+        verbose_name_plural = 'Follows'
+        unique_together = ['userID', 'JobDetailID']
+
+    def __str__(self):
+        return f"{self.userID} follows {self.JobDetailID}"
         ordering = ['-collected_at']
 
     def __str__(self):

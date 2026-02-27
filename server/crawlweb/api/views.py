@@ -15,13 +15,14 @@ from urllib import request
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
-from .models import JobDetail, User
-from .serializers import JobDetailSerializer, UserSerializer
+from .models import JobDetail, User, UserProfile, Company, Application, Follow
+from .serializers import JobDetailSerializer, UserSerializer, UserProfileSerializer, CompanySerializer, ApplicationSerializer, FollowSerializer
 import bcrypt
 import jwt
 import datetime
 import logging
 from django.conf import settings
+from bson import ObjectId
 
 logger = logging.getLogger(__name__)
 @api_view(['GET'])
@@ -95,8 +96,7 @@ def login(request):
             'redirect': redirect,
             'user': {
                 'username': user.username,
-                'role': user.role,
-                'id': user_id_str
+                'role': user.role
             }
         }, status=status.HTTP_200_OK)
 
@@ -159,8 +159,7 @@ def get_user(request):
             return Response({
                 'user': {
                     'username': user.username,
-                    'role': user.role,
-                    'id': str(user.pk)
+                    'role': user.role
                 }
             }, status=status.HTTP_200_OK)
         except jwt.ExpiredSignatureError:
@@ -244,7 +243,6 @@ def register(request):
             'success': True,
             'message': 'Đăng ký thành công',
             'user': {
-                'id': str(new_user.pk),
                 'username': new_user.username,
                 'role': new_user.role
             }
@@ -257,3 +255,382 @@ def register(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+
+# Helper function to get user from request cookie
+def get_user_from_token(request):
+    """Extract and verify user from JWT token in cookie"""
+    try:
+        auth_token = request.COOKIES.get('auth')
+        if not auth_token:
+            return None
+        
+        payload = jwt.decode(auth_token, settings.SECRET_KEY, algorithms=['HS256'])
+        username = payload.get('username')
+        if not username:
+            return None
+        
+        try:
+            user = User.objects.get(username=username)
+            return user
+        except User.DoesNotExist:
+            return None
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+        return None
+
+
+# ==================== USER PROFILE APIs ====================
+
+@api_view(['GET', 'PUT'])
+def user_profile(request):
+    """Get or update user profile"""
+    user = get_user_from_token(request)
+    if not user:
+        return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    if request.method == 'GET':
+        try:
+            profile = UserProfile.objects.get(userID=user.username)
+            serializer = UserProfileSerializer(profile)
+            return Response({'success': True, 'data': serializer.data}, status=status.HTTP_200_OK)
+        except UserProfile.DoesNotExist:
+            return Response({'success': True, 'data': None}, status=status.HTTP_200_OK)
+    
+    elif request.method == 'PUT':
+        try:
+            profile, created = UserProfile.objects.get_or_create(userID=user.username)
+            
+            # Update fields
+            profile.name = request.data.get('name', profile.name)
+            profile.phone = request.data.get('phone', profile.phone)
+            profile.gender = request.data.get('gender', profile.gender)
+            
+            birthdate = request.data.get('birthdate')
+            if birthdate:
+                profile.birthdate = birthdate
+            
+            profile.cv = request.data.get('cv', profile.cv)
+            profile.description = request.data.get('description', profile.description)
+            
+            profile.save()
+            
+            serializer = UserProfileSerializer(profile)
+            return Response({'success': True, 'data': serializer.data}, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Update profile error: {e}")
+            return Response({'error': 'Lỗi khi cập nhật profile'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ==================== COMPANY APIs ====================
+
+@api_view(['GET'])
+def get_companies(request):
+    """Get companies by username"""
+    username = request.GET.get('username')
+    if not username:
+        return Response({'error': 'Username required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        companies = Company.objects.filter(username=username)
+        serializer = CompanySerializer(companies, many=True)
+        return Response({'success': True, 'companies': serializer.data}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Get companies error: {e}")
+        return Response({'error': 'Lỗi khi lấy thông tin công ty'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['PUT'])
+def update_company(request, company_id):
+    """Update company information"""
+    user = get_user_from_token(request)
+    if not user or user.role != 'company':
+        return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        company = Company.objects.get(pk=company_id, username=user.username)
+        
+        # Update fields
+        company.name = request.data.get('name', company.name)
+        company.email = request.data.get('email', company.email)
+        company.phone = request.data.get('phone', company.phone)
+        company.website = request.data.get('website', company.website)
+        company.address = request.data.get('address', company.address)
+        company.logo = request.data.get('logo', company.logo)
+        company.description = request.data.get('description', company.description)
+        
+        company.save()
+        
+        serializer = CompanySerializer(company)
+        return Response({'success': True, 'data': serializer.data}, status=status.HTTP_200_OK)
+    except Company.DoesNotExist:
+        return Response({'error': 'Company not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"Update company error: {e}")
+        return Response({'error': 'Lỗi khi cập nhật thông tin công ty'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ==================== APPLICATION APIs ====================
+
+@api_view(['GET', 'POST'])
+def user_applications(request):
+    """Get or create user applications"""
+    user = get_user_from_token(request)
+    if not user:
+        return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    if request.method == 'GET':
+        try:
+            applications = Application.objects.filter(userID=user.username)
+            result = []
+            
+            for app in applications:
+                app_data = {
+                    '_id': str(app.pk),
+                    'userID': app.userID,
+                    'JobDetailID': {},
+                    'status': app.status,
+                    'time': app.time.isoformat(),
+                    'content': app.content
+                }
+                
+                # Get job detail
+                try:
+                    job = JobDetail.objects.get(pk=app.JobDetailID)
+                    app_data['JobDetailID'] = {
+                        '_id': str(job.pk),
+                        'job_title': job.job_title,
+                        'company_name': job.company_name,
+                        'province': job.province,
+                        'salary': job.salary
+                    }
+                except JobDetail.DoesNotExist:
+                    pass
+                
+                result.append(app_data)
+            
+            return Response({'success': True, 'data': result}, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Get applications error: {e}")
+            return Response({'error': 'Lỗi khi lấy danh sách ứng tuyển'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    elif request.method == 'POST':
+        try:
+            job_id = request.data.get('jobId')
+            if not job_id:
+                return Response({'error': 'Job ID required'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Check if already applied
+            if Application.objects.filter(userID=user.username, JobDetailID=job_id).exists():
+                return Response({'error': 'Bạn đã ứng tuyển công việc này'}, status=status.HTTP_409_CONFLICT)
+            
+            # Create application
+            application = Application.objects.create(
+                userID=user.username,
+                JobDetailID=job_id,
+                status='chưa duyệt'
+            )
+            
+            return Response({'success': True, 'data': {'_id': str(application.pk)}}, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            logger.error(f"Create application error: {e}")
+            return Response({'error': 'Lỗi khi tạo đơn ứng tuyển'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['DELETE', 'PUT'])
+def application_detail(request, application_id):
+    """Delete or update an application"""
+    user = get_user_from_token(request)
+    if not user:
+        return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        application = Application.objects.get(pk=application_id)
+        
+        # Check permissions
+        if user.role == 'user' and application.userID != user.username:
+            return Response({'error': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
+        
+        if request.method == 'DELETE':
+            application.delete()
+            return Response({'success': True, 'message': 'Đã xóa đơn ứng tuyển'}, status=status.HTTP_200_OK)
+        
+        elif request.method == 'PUT':
+            # Company can update status
+            if user.role == 'company':
+                application.status = request.data.get('status', application.status)
+                application.content = request.data.get('content', application.content)
+                application.save()
+                return Response({'success': True}, status=status.HTTP_200_OK)
+            else:
+                return Response({'error': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
+                
+    except Application.DoesNotExist:
+        return Response({'error': 'Application not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"Application detail error: {e}")
+        return Response({'error': 'Lỗi xử lý đơn ứng tuyển'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def company_applications(request):
+    """Get applications for company's jobs"""
+    user = get_user_from_token(request)
+    if not user or user.role != 'company':
+        return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        # Get company info
+        companies = Company.objects.filter(username=user.username)
+        if not companies:
+            return Response({'success': True, 'data': []}, status=status.HTTP_200_OK)
+        
+        company = companies.first()
+        
+        # Get all jobs from this company
+        jobs = JobDetail.objects.filter(company_name=company.name)
+        job_ids = [str(job.pk) for job in jobs]
+        
+        # Get applications for these jobs
+        applications = Application.objects.filter(JobDetailID__in=job_ids)
+        
+        result = []
+        for app in applications:
+            app_data = {
+                '_id': str(app.pk),
+                'userID': {'username': app.userID},
+                'JobDetailID': {},
+                'status': app.status,
+                'time': app.time.isoformat(),
+                'content': app.content,
+                'userProfile': {}
+            }
+            
+            # Get job detail
+            try:
+                job = JobDetail.objects.get(pk=app.JobDetailID)
+                app_data['JobDetailID'] = {
+                    '_id': str(job.pk),
+                    'job_title': job.job_title,
+                    'company_name': job.company_name
+                }
+            except JobDetail.DoesNotExist:
+                pass
+            
+            # Get user profile
+            try:
+                profile = UserProfile.objects.get(userID=app.userID)
+                app_data['userProfile'] = {
+                    'name': profile.name,
+                    'phone': profile.phone,
+                    'birthdate': profile.birthdate.isoformat() if profile.birthdate else None,
+                    'gender': profile.gender,
+                    'cv': profile.cv,
+                    'description': profile.description
+                }
+            except UserProfile.DoesNotExist:
+                pass
+            
+            result.append(app_data)
+        
+        return Response({'success': True, 'data': result}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Get company applications error: {e}")
+        return Response({'error': 'Lỗi khi lấy danh sách ứng tuyển'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ==================== FAVORITES APIs ====================
+
+@api_view(['GET', 'POST'])
+def user_favorites(request):
+    """Get or add user favorites"""
+    user = get_user_from_token(request)
+    if not user:
+        return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    if request.method == 'GET':
+        try:
+            follows = Follow.objects.filter(userID=user.username)
+            result = []
+            
+            for follow in follows:
+                try:
+                    job = JobDetail.objects.get(pk=follow.JobDetailID)
+                    job_data = JobDetailSerializer(job).data
+                    job_data['_id'] = str(job.pk)
+                    result.append(job_data)
+                except JobDetail.DoesNotExist:
+                    pass
+            
+            return Response({'success': True, 'data': result}, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Get favorites error: {e}")
+            return Response({'error': 'Lỗi khi lấy danh sách yêu thích'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    elif request.method == 'POST':
+        try:
+            job_id = request.data.get('jobId')
+            if not job_id:
+                return Response({'error': 'Job ID required'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Check if already favorited
+            if Follow.objects.filter(userID=user.username, JobDetailID=job_id).exists():
+                return Response({'error': 'Đã lưu công việc này'}, status=status.HTTP_409_CONFLICT)
+            
+            # Create favorite
+            follow = Follow.objects.create(
+                userID=user.username,
+                JobDetailID=job_id
+            )
+            
+            return Response({'success': True}, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            logger.error(f"Add favorite error: {e}")
+            return Response({'error': 'Lỗi khi lưu công việc'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['DELETE'])
+def delete_favorite(request, job_id):
+    """Remove job from favorites"""
+    user = get_user_from_token(request)
+    if not user:
+        return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        follow = Follow.objects.get(userID=user.username, JobDetailID=job_id)
+        follow.delete()
+        return Response({'success': True}, status=status.HTTP_200_OK)
+    except Follow.DoesNotExist:
+        return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"Delete favorite error: {e}")
+        return Response({'error': 'Lỗi khi xóa'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ==================== CHANGE PASSWORD API ====================
+
+@api_view(['POST'])
+def change_password(request):
+    """Change user password"""
+    user = get_user_from_token(request)
+    if not user:
+        return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        current_password = request.data.get('currentPassword')
+        new_password = request.data.get('newPassword')
+        
+        if not current_password or not new_password:
+            return Response({'error': 'Passwords required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Verify current password
+        if not bcrypt.checkpw(current_password.encode('utf-8'), user.password.encode('utf-8')):
+            return Response({'error': 'Current password is incorrect'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Hash new password
+        hashed_password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
+        user.password = hashed_password.decode('utf-8')
+        user.save()
+        
+        return Response({'success': True, 'message': 'Đổi mật khẩu thành công'}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Change password error: {e}")
+        return Response({'error': 'Lỗi khi đổi mật khẩu'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

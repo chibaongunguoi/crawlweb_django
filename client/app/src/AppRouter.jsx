@@ -2,6 +2,7 @@ import { Routes, Route, useLocation } from 'react-router-dom';
 import Home from './App';
 import LoginPage from './Login';
 import RegisterPage from './Register';
+import UserProfile from './UserProfile';
 import Header from './ui/layout/header';
 import Footer from './ui/layout/footer';
 
@@ -20,6 +21,7 @@ export default function AppRouter() {
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/user/profile" element={<UserProfile />} />
           {/* Add more routes here as needed */}
         </Routes>
       </main>
