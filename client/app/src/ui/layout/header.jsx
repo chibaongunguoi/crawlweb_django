@@ -23,7 +23,7 @@ export default function Header() {
       if (response.ok) {
         const data = await response.json();
         setUser(data.user);
-        
+        console.log('Logged in user:', data.user);
         // Fetch notifications only if user is logged in and has role 'user'
         if (data.user && data.user.role === 'user') {
           fetchNotifications();

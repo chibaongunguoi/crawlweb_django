@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import JobDetail, User, UserProfile, Company, Application, Follow
+from .models import JobDetail, User, UserProfile, Company, Application, Follow, Notification
 import json
 
 
@@ -55,4 +55,15 @@ class ApplicationSerializer(serializers.ModelSerializer):
 class FollowSerializer(serializers.ModelSerializer):
     class Meta:
         model = Follow
+        fields = '__all__'
+
+class FollowSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Follow
+        fields = '__all__'
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
         fields = '__all__'

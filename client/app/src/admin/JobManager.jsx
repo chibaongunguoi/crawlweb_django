@@ -1,0 +1,187 @@
+import React, { useEffect, useState } from "react";
+import "../admin.css";
+import Pagination from "./components/Pagination";
+
+export default function JobManager() {
+  const [jobs, setJobs] = useState([]);
+  const [filteredJobs, setFilteredJobs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState("");
+  const itemsPerPage = 20;
+
+  useEffect(() => {
+    fetchJobs();
+  }, []);
+
+  useEffect(() => {
+    // Filter jobs based on search term
+    if (searchTerm.trim() === "") {
+      setFilteredJobs(jobs);
+    } else {
+      const filtered = jobs.filter(job => 
+        job.job_title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (job.company_name && job.company_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (job.province && job.province.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
+      setFilteredJobs(filtered);
+      setCurrentPage(1);
+    }
+  }, [searchTerm, jobs]);
+
+  const fetchJobs = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('http://localhost:8000/api/admin/jobs/', {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setJobs(data.data || []);
+      } else {
+        console.error('Error fetching jobs:', response.status);
+        setJobs([]);
+      }
+    } catch (error) {
+      console.error('Error fetching jobs:', error);
+      setJobs([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (jobId, jobTitle) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa công việc "${jobTitle}"?`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:8000/api/admin/jobs/${jobId}/`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        alert('Xóa công việc thành công!');
+        fetchJobs();
+      } else {
+        const data = await response.json();
+        alert(data.error || 'Có lỗi xảy ra khi xóa công việc');
+      }
+    } catch (error) {
+      console.error('Error deleting job:', error);
+      alert('Có lỗi xảy ra khi xóa công việc');
+    }
+  };
+
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString;
+    
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    
+    return `${day}/${month}/${year}`;
+  };
+
+  const totalPages = Math.ceil(filteredJobs.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedJobs = filteredJobs.slice(startIndex, endIndex);
+
+  return (
+    <div>
+      <div className="admin-content-header">
+        <h1 className="admin-content-title">Quản lý công việc</h1>
+        <p className="admin-content-subtitle">Danh sách tất cả công việc trong hệ thống</p>
+      </div>
+
+      {loading ? (
+        <div className="loading-container">
+          <div className="loading-spinner"></div>
+          Đang tải danh sách công việc...
+        </div>
+      ) : (
+        <div className="jobs-section">
+          <div className="jobs-header">
+            <h2>Danh sách công việc ({filteredJobs.length})</h2>
+            <button className="refresh-btn" onClick={fetchJobs}>
+              <svg className="refresh-icon" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd"/>
+              </svg>
+              Làm mới
+            </button>
+          </div>
+
+          <div className="search-box">
+            <input
+              type="text"
+              className="search-input"
+              placeholder="Tìm kiếm theo tên công việc, công ty hoặc địa điểm..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          
+          <div className="jobs-table-container">
+            <table className="jobs-table">
+              <thead>
+                <tr>
+                  <th>Tên công việc</th>
+                  <th>Công ty</th>
+                  <th>Địa điểm</th>
+                  <th>Lượt theo dõi</th>
+                  <th>Ngày thu thập</th>
+                  <th>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedJobs.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="no-jobs">
+                      Không tìm thấy công việc nào
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedJobs.map((job) => (
+                    <tr key={job.id} className="job-row">
+                      <td>
+                        <div style={{maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                          {job.job_title}
+                        </div>
+                      </td>
+                      <td>{job.company_name || 'N/A'}</td>
+                      <td>{job.province || 'N/A'}</td>
+                      <td style={{textAlign: 'center'}}>{job.followCount || 0}</td>
+                      <td>{formatDate(job.collected_at)}</td>
+                      <td>
+                        <div className="action-buttons">
+                          <button
+                            className="delete-btn"
+                            onClick={() => handleDelete(job.id, job.job_title)}
+                          >
+                            Xóa
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {totalPages > 1 && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
