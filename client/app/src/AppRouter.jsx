@@ -11,6 +11,7 @@ import UserManager from './admin/UserManager';
 import JobManager from './admin/JobManager';
 import CompanyManager from './admin/CompanyManager';
 import NotificationManager from './admin/NotificationManager';
+import ScrapeManager from './admin/ScrapeManager';
 
 export default function AppRouter() {
   const location = useLocation();
@@ -36,6 +37,7 @@ export default function AppRouter() {
             <Route path="jobs" element={<JobManager />} />
             <Route path="companies" element={<CompanyManager />} />
             <Route path="notifications" element={<NotificationManager />} />
+            <Route path="scrape" element={<ScrapeManager />} />
           </Route>
           
           {/* Add more routes here as needed */}

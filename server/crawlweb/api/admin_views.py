@@ -47,8 +47,22 @@ def admin_get_users(request):
         # Get user profiles for additional info
         users_data = []
         for user in users:
+            # Handle ObjectId properly - use _id for MongoDB
+            try:
+                if hasattr(user, '_id'):
+                    user_id = str(user._id)
+                elif hasattr(user, 'id') and user.id is not None:
+                    user_id = str(user.id)
+                elif hasattr(user, 'pk') and user.pk is not None:
+                    user_id = str(user.pk)
+                else:
+                    user_id = user.username  # fallback to username
+            except Exception as e:
+                logger.warning(f"Error getting ID for user {user.username}: {str(e)}")
+                user_id = user.username
+            
             user_dict = {
-                'id': str(user.pk),
+                'id': user_id,
                 'username': user.username,
                 'role': user.role
             }
@@ -63,17 +77,22 @@ def admin_get_users(request):
                 }
             except UserProfile.DoesNotExist:
                 user_dict['profile'] = None
+            except Exception as e:
+                logger.warning(f"Error getting profile for {user.username}: {str(e)}")
+                user_dict['profile'] = None
             
             users_data.append(user_dict)
+        
+        logger.info(f"Returning {len(users_data)} users")
         
         return Response({
             'success': True,
             'users': users_data
         }, status=status.HTTP_200_OK)
     except Exception as e:
-        logger.error(f"Error getting users: {str(e)}")
+        logger.error(f"Error getting users: {str(e)}", exc_info=True)
         return Response(
-            {'error': 'Failed to get users'},
+            {'error': f'Failed to get users: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -122,18 +141,24 @@ def admin_get_jobs(request):
         # Add follow counts
         jobs_data = serializer.data
         for job in jobs_data:
-            job_id = str(job['id'])
-            follow_count = Follow.objects.filter(JobDetailID=job_id).count()
-            job['followCount'] = follow_count
+            try:
+                job_id = str(job['id'])
+                follow_count = Follow.objects.filter(JobDetailID=job_id).count()
+                job['followCount'] = follow_count
+            except Exception as e:
+                logger.warning(f"Error getting follow count for job: {str(e)}")
+                job['followCount'] = 0
+        
+        logger.info(f"Returning {len(jobs_data)} jobs")
         
         return Response({
             'success': True,
             'data': jobs_data
         }, status=status.HTTP_200_OK)
     except Exception as e:
-        logger.error(f"Error getting jobs: {str(e)}")
+        logger.error(f"Error getting jobs: {str(e)}", exc_info=True)
         return Response(
-            {'error': 'Failed to get jobs'},
+            {'error': f'Failed to get jobs: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -209,8 +234,13 @@ def admin_companies(request):
             
             companies_data = []
             for company in companies:
+                try:
+                    company_id = str(company.id) if hasattr(company, 'id') else str(company.pk)
+                except:
+                    company_id = str(company.pk)
+                    
                 company_dict = {
-                    'id': str(company.pk),
+                    'id': company_id,
                     'name': company.name,
                     'email': company.email,
                     'phone': company.phone,
@@ -222,15 +252,17 @@ def admin_companies(request):
                 }
                 companies_data.append(company_dict)
             
+            logger.info(f"Returning {len(companies_data)} companies")
+            
             return Response({
                 'success': True,
                 'companies': companies_data,
                 'count': len(companies_data)
             }, status=status.HTTP_200_OK)
         except Exception as e:
-            logger.error(f"Error getting companies: {str(e)}")
+            logger.error(f"Error getting companies: {str(e)}", exc_info=True)
             return Response(
-                {'error': 'Failed to get companies'},
+                {'error': f'Failed to get companies: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     

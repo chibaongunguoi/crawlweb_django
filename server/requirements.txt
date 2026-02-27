@@ -2,4 +2,5 @@ django-mongodb-backend
 django-cors-headers
 bcrypt
 PyJWT
+requests
 # react-router-dom

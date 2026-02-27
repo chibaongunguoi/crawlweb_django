@@ -316,3 +316,71 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"Notification for {self.userID}: {self.content[:50]}"
+
+
+class ScrapeJob(models.Model):
+    urls = models.JSONField(
+        help_text="Danh sách URLs cần crawl"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=[
+            ('pending', 'Pending'),
+            ('processing', 'Processing'),
+            ('completed', 'Completed'),
+            ('failed', 'Failed'),
+        ],
+        default='pending',
+        help_text="Trạng thái job"
+    )
+    jobCount = models.IntegerField(
+        default=0,
+        help_text="Số lượng jobs đã crawl"
+    )
+    errorMessage = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Thông báo lỗi"
+    )
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Metadata bổ sung"
+    )
+    totalUrls = models.IntegerField(
+        default=0,
+        help_text="Tổng số URLs"
+    )
+    processedUrls = models.IntegerField(
+        default=0,
+        help_text="Số URLs đã xử lý"
+    )
+    currentUrl = models.CharField(
+        max_length=1000,
+        blank=True,
+        null=True,
+        help_text="URL đang xử lý"
+    )
+    progress = models.IntegerField(
+        default=0,
+        help_text="Phần trăm hoàn thành (0-100)"
+    )
+    createdAt = models.DateTimeField(
+        auto_now_add=True,
+        help_text="Thời gian tạo"
+    )
+    completedAt = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text="Thời gian hoàn thành"
+    )
+
+    class Meta:
+        db_table = 'ScrapeJob'
+        verbose_name = 'Scrape Job'
+        verbose_name_plural = 'Scrape Jobs'
+        ordering = ['-createdAt']
+
+    def __str__(self):
+        return f"ScrapeJob {self.id} - {self.status} ({self.processedUrls}/{self.totalUrls})"
+

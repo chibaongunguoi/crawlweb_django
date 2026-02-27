@@ -12,6 +12,10 @@ from .admin_views import (
     admin_companies, admin_company_detail,
     admin_get_notifications, admin_delete_notification
 )
+from .scrape_views import (
+    scrape_upload, scrape_progress, scrape_result,
+    scrape_status, scrape_jobs, scrape_delete_job
+)
 
 urlpatterns = [
     # path("", include("rest_framework.urls")),
@@ -53,4 +57,12 @@ urlpatterns = [
     path("admin/companies-list/<str:company_id>/", admin_company_detail, name="admin_company_detail"),
     path("admin/notifications/", admin_get_notifications, name="admin_get_notifications"),
     path("admin/notifications/<str:notification_id>/", admin_delete_notification, name="admin_delete_notification"),
+    
+    # Scrape Routes
+    path("scrape/upload/", scrape_upload, name="scrape_upload"),
+    path("scrape/progress/", scrape_progress, name="scrape_progress"),
+    path("scrape/result/", scrape_result, name="scrape_result"),
+    path("scrape/status/<str:job_id>/", scrape_status, name="scrape_status"),
+    path("scrape/jobs/", scrape_jobs, name="scrape_jobs"),
+    path("scrape/jobs/<str:job_id>/", scrape_delete_job, name="scrape_delete_job"),
 ]

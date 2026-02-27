@@ -36,15 +36,21 @@ export default function UserManager() {
         credentials: 'include'
       });
       
+      console.log('Response status:', response.status); // Debug
+      
       if (response.ok) {
         const data = await response.json();
+        console.log('Users data:', data); // Debug
         setUsers(data.users || []);
       } else {
-        console.error('Error fetching users:', response.status);
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Error fetching users:', response.status, errorData);
+        alert(`Lỗi: ${errorData.error || 'Không thể tải danh sách người dùng'}`);
         setUsers([]);
       }
     } catch (error) {
       console.error('Error fetching users:', error);
+      alert('Lỗi kết nối: ' + error.message);
       setUsers([]);
     } finally {
       setLoading(false);

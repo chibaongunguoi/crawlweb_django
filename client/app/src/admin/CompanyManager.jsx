@@ -47,15 +47,21 @@ export default function CompanyManager() {
         credentials: 'include'
       });
       
+      console.log('Companies response status:', response.status); // Debug
+      
       if (response.ok) {
         const data = await response.json();
+        console.log('Companies data:', data); // Debug
         setCompanies(data.companies || []);
       } else {
-        console.error('Error fetching companies:', response.status);
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Error fetching companies:', response.status, errorData);
+        alert(`Lỗi: ${errorData.error || 'Không thể tải danh sách công ty'}`);
         setCompanies([]);
       }
     } catch (error) {
       console.error('Error fetching companies:', error);
+      alert('Lỗi kết nối: ' + error.message);
       setCompanies([]);
     } finally {
       setLoading(false);

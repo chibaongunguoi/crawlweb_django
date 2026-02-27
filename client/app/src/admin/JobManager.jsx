@@ -36,15 +36,21 @@ export default function JobManager() {
         credentials: 'include'
       });
       
+      console.log('Jobs response status:', response.status); // Debug
+      
       if (response.ok) {
         const data = await response.json();
+        console.log('Jobs data:', data); // Debug
         setJobs(data.data || []);
       } else {
-        console.error('Error fetching jobs:', response.status);
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Error fetching jobs:', response.status, errorData);
+        alert(`Lỗi: ${errorData.error || 'Không thể tải danh sách công việc'}`);
         setJobs([]);
       }
     } catch (error) {
       console.error('Error fetching jobs:', error);
+      alert('Lỗi kết nối: ' + error.message);
       setJobs([]);
     } finally {
       setLoading(false);
