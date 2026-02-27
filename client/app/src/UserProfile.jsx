@@ -20,6 +20,17 @@ export default function UserProfile() {
   });
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState({ type: '', text: '' });
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    name: '',
+    phone: '',
+    gender: '',
+    birthdate: '',
+    cv: '',
+    description: ''
+  });
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMessage, setProfileMessage] = useState({ type: '', text: '' });
 
   // Fetch user from API using cookie authentication
   useEffect(() => {
@@ -106,6 +117,91 @@ export default function UserProfile() {
       setCompanyInfo(null);
     } finally {
       setProfileLoading(false);
+    }
+  };
+
+  // Handle profile edit mode
+  const handleEditProfile = () => {
+    if (userProfile) {
+      setProfileForm({
+        name: userProfile.name || '',
+        phone: userProfile.phone || '',
+        gender: userProfile.gender || '',
+        birthdate: userProfile.birthdate || '',
+        cv: userProfile.cv || '',
+        description: userProfile.description || ''
+      });
+    } else {
+      setProfileForm({
+        name: '',
+        phone: '',
+        gender: '',
+        birthdate: '',
+        cv: '',
+        description: ''
+      });
+    }
+    setIsEditingProfile(true);
+    setProfileMessage({ type: '', text: '' });
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditingProfile(false);
+    setProfileForm({
+      name: '',
+      phone: '',
+      gender: '',
+      birthdate: '',
+      cv: '',
+      description: ''
+    });
+    setProfileMessage({ type: '', text: '' });
+  };
+
+  const handleProfileFormChange = (e) => {
+    const { name, value } = e.target;
+    setProfileForm(prev => ({ ...prev, [name]: value }));
+    if (profileMessage.text) {
+      setProfileMessage({ type: '', text: '' });
+    }
+  };
+
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    if (profileSaving) return;
+
+    // Validation
+    if (!profileForm.name || !profileForm.phone) {
+      setProfileMessage({ type: 'error', text: 'Vui lòng điền họ tên và số điện thoại' });
+      return;
+    }
+
+    try {
+      setProfileSaving(true);
+      const method = userProfile ? 'PUT' : 'POST';
+      const response = await fetch('http://localhost:8000/api/user/profile/', {
+        method: method,
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(profileForm)
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        setProfileMessage({ type: 'success', text: userProfile ? 'Cập nhật thông tin thành công!' : 'Thêm thông tin thành công!' });
+        await fetchUserProfile();
+        setTimeout(() => {
+          setIsEditingProfile(false);
+          setProfileMessage({ type: '', text: '' });
+        }, 1500);
+      } else {
+        setProfileMessage({ type: 'error', text: data.error || 'Có lỗi xảy ra khi lưu thông tin' });
+      }
+    } catch (error) {
+      console.error('Save profile error:', error);
+      setProfileMessage({ type: 'error', text: 'Có lỗi xảy ra khi lưu thông tin' });
+    } finally {
+      setProfileSaving(false);
     }
   };
 
@@ -357,6 +453,14 @@ export default function UserProfile() {
           <div className="content-section">
             <div className="section-header-with-action">
               <h2>Thông tin cá nhân</h2>
+              {user?.role !== 'company' && !isEditingProfile && (
+                <button onClick={handleEditProfile} className="edit-profile-btn">
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  {userProfile ? 'Chỉnh sửa' : 'Thêm thông tin'}
+                </button>
+              )}
             </div>
 
             <div className="profile-card">
@@ -413,6 +517,122 @@ export default function UserProfile() {
                     <p>Công ty của bạn chưa được thiết lập trong hệ thống.</p>
                   </div>
                 )
+              ) : isEditingProfile ? (
+                <form className="profile-edit-form" onSubmit={handleSaveProfile}>
+                  {profileMessage.text && (
+                    <div className={`message ${profileMessage.type}`}>
+                      {profileMessage.text}
+                    </div>
+                  )}
+
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label htmlFor="name">Họ & tên: <span className="required">*</span></label>
+                      <input
+                        type="text"
+                        id="name"
+                        name="name"
+                        className="form-input"
+                        placeholder="Nhập họ và tên"
+                        value={profileForm.name}
+                        onChange={handleProfileFormChange}
+                        disabled={profileSaving}
+                        required
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label htmlFor="phone">Số điện thoại: <span className="required">*</span></label>
+                      <input
+                        type="tel"
+                        id="phone"
+                        name="phone"
+                        className="form-input"
+                        placeholder="Nhập số điện thoại"
+                        value={profileForm.phone}
+                        onChange={handleProfileFormChange}
+                        disabled={profileSaving}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label htmlFor="gender">Giới tính:</label>
+                      <select
+                        id="gender"
+                        name="gender"
+                        className="form-input"
+                        value={profileForm.gender}
+                        onChange={handleProfileFormChange}
+                        disabled={profileSaving}
+                      >
+                        <option value="">Chọn giới tính</option>
+                        <option value="male">Nam</option>
+                        <option value="female">Nữ</option>
+                        <option value="other">Khác</option>
+                      </select>
+                    </div>
+
+                    <div className="form-group">
+                      <label htmlFor="birthdate">Ngày sinh:</label>
+                      <input
+                        type="date"
+                        id="birthdate"
+                        name="birthdate"
+                        className="form-input"
+                        value={profileForm.birthdate}
+                        onChange={handleProfileFormChange}
+                        disabled={profileSaving}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="cv">Link CV:</label>
+                    <input
+                      type="url"
+                      id="cv"
+                      name="cv"
+                      className="form-input"
+                      placeholder="Nhập link đến CV của bạn"
+                      value={profileForm.cv}
+                      onChange={handleProfileFormChange}
+                      disabled={profileSaving}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="description">Mô tả bản thân:</label>
+                    <textarea
+                      id="description"
+                      name="description"
+                      className="form-textarea"
+                      placeholder="Giới thiệu về bản thân, kinh nghiệm, kỹ năng..."
+                      rows="5"
+                      value={profileForm.description}
+                      onChange={handleProfileFormChange}
+                      disabled={profileSaving}
+                    />
+                  </div>
+
+                  <div className="form-actions">
+                    <button type="button" className="cancel-btn" onClick={handleCancelEdit} disabled={profileSaving}>
+                      Hủy
+                    </button>
+                    <button type="submit" className="save-btn" disabled={profileSaving}>
+                      {profileSaving ? (
+                        <div className="button-loading">
+                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                          Đang lưu...
+                        </div>
+                      ) : (
+                        userProfile ? 'Lưu thay đổi' : 'Thêm thông tin'
+                      )}
+                    </button>
+                  </div>
+                </form>
               ) : (
                 userProfile ? (
                   <div className="profile-details">
