@@ -165,7 +165,39 @@ def scrape_result(request):
             scrape_job.processedUrls = scrape_job.totalUrls
             scrape_job.progress = 100
             
-            logger.info(f"Job {job_id} completed with {len(job_urls)} jobs")
+            # Save each job to JobDetail collection
+            saved_count = 0
+            for job_data in job_urls:
+                try:
+                    # Check if job already exists by URL
+                    url = job_data.get('url')
+                    if not url:
+                        continue
+                        
+                    # Create or update JobDetail
+                    job_detail, created = JobDetail.objects.update_or_create(
+                        url=url,
+                        defaults={
+                            'thumbnail': job_data.get('thumbnail'),
+                            'job_title': job_data.get('job_title', ''),
+                            'company_url': job_data.get('company_url'),
+                            'company_name': job_data.get('company_name'),
+                            'province': job_data.get('province', ''),
+                            'salary': job_data.get('salary'),
+                            'skills': job_data.get('skills', []),
+                            'descriptions': job_data.get('descriptions'),
+                            'job_info': job_data.get('job_info'),
+                        }
+                    )
+                    saved_count += 1
+                    if created:
+                        logger.info(f"Created new job: {url}")
+                    else:
+                        logger.info(f"Updated existing job: {url}")
+                except Exception as e:
+                    logger.error(f"Error saving job {job_data.get('url')}: {str(e)}")
+            
+            logger.info(f"Job {job_id} completed with {len(job_urls)} jobs, saved {saved_count} to database")
         else:
             scrape_job.status = 'failed'
             scrape_job.errorMessage = data.get('message', 'Unknown error')

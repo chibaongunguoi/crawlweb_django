@@ -23,7 +23,7 @@ export default function AppRouter() {
   return (
     <div className="app-wrapper">
       {showLayout && <Header />}
-      <main className="main-content">
+      <main className="main-content-wrapper">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<LoginPage />} />
