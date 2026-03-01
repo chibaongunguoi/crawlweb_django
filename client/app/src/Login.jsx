@@ -59,53 +59,52 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="login-container">
-      <div className="login-wrapper">
-        <div className="login-spacer"></div>
-        <h1 className="login-title">Đăng nhập</h1>
-        <form onSubmit={handleSubmit} className="login-form">
-          <div className="login-form-content">
-            <div className="login-field">
-              <div className="login-label">Tên đăng nhập</div>
+    <div className="auth-page-container">
+      <div className="auth-form-wrapper">
+        <h1 className="auth-page-title">Đăng nhập</h1>
+        <form onSubmit={handleSubmit} className="auth-form">
+          <div className="auth-form-box">
+            <div className="auth-field">
+              <label className="auth-label">Tên đăng nhập</label>
               <input 
                 ref={formFieldRef}
-                className="login-input"
+                className="auth-input"
                 type="text"
                 name="username"
                 placeholder="Tên đăng nhập"
-                defaultValue=""
                 autoComplete="off"
                 required
               />
             </div>
-            <div className="login-field">
-              <div className="login-label">Mật khẩu</div>
+            <div className="auth-field">
+              <label className="auth-label">Mật khẩu</label>
               <input
-                className="login-input"
+                className="auth-input"
                 type="password"
                 name="password"
                 placeholder="Mật khẩu"
-                defaultValue=""
                 autoComplete="off"
                 required
               />
             </div>
-            <div className="login-error">{errorMessage}</div>
+            {errorMessage && (
+              <div className="auth-error">{errorMessage}</div>
+            )}
             <button
               type="submit"
               disabled={isCheckingLogin}
-              className="login-button"
+              className="auth-button"
             >
               {isCheckingLogin ? (
-                <div className="login-spinner"></div>
+                <div className="auth-spinner"></div>
               ) : (
                 "Đăng nhập"
               )}
             </button>
             
-            <div className="login-register-link">
-              <span className="login-register-text">Chưa có tài khoản? </span>
-              <Link to="/register" className="login-register-anchor">
+            <div className="auth-link-section">
+              <span className="auth-link-text">Chưa có tài khoản? </span>
+              <Link to="/register" className="auth-link">
                 Đăng ký
               </Link>
             </div>

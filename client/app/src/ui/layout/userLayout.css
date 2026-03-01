@@ -169,6 +169,7 @@ select option {
 
 .form-icon-left {
   padding-left: 10px;
+  width: 100%;
 }
 
 .form-icon {
@@ -180,7 +181,7 @@ select option {
 }
 
 .form-control {
-  width: 78%;
+  width: 100%;
   padding: 8px 40px 8px 40px;
   font-size: 14px;
   line-height: 1.5;

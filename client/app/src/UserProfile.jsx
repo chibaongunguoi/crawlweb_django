@@ -443,7 +443,7 @@ export default function UserProfile() {
     <div className="profile-container">
       {/* Sidebar */}
       <div className="sidebar">
-        <div className="user-info">
+        {/* <div className="user-info">
           {user?.role === 'company' && companyInfo ? (
             <>
               <div className="user-avatar">
@@ -473,7 +473,7 @@ export default function UserProfile() {
               <p className="user-role">{user?.role || 'User'}</p>
             </>
           )}
-        </div>
+        </div> */}
 
         <nav className="sidebar-nav">
           <ul>

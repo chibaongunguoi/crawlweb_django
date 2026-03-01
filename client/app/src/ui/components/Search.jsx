@@ -6,7 +6,7 @@ export default function Search({
   onSearch 
 }) {
   return (
-    <div className="form-group form-icon-left">
+    <div className="form-icon-left">
       <input
         type="text"
         name="text"

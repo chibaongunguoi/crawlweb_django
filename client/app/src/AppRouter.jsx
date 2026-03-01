@@ -12,12 +12,12 @@ import JobManager from './admin/JobManager';
 import CompanyManager from './admin/CompanyManager';
 import NotificationManager from './admin/NotificationManager';
 import ScrapeManager from './admin/ScrapeManager';
-
+import './App.css';
 export default function AppRouter() {
   const location = useLocation();
   
   // Routes that shouldn't show header/footer
-  const noLayoutRoutes = ['/login', '/register', '/admin'];
+  const noLayoutRoutes = ['/admin'];
   const showLayout = !noLayoutRoutes.some(route => location.pathname.startsWith(route));
 
   return (

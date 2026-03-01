@@ -112,18 +112,17 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="register-container">
-      <div className="register-wrapper">
-        <div className="register-spacer"></div>
-        <h1 className="register-title">Đăng ký tài khoản</h1>
+    <div className="auth-page-container">
+      <div className="auth-form-wrapper">
+        <h1 className="auth-page-title">Đăng ký tài khoản</h1>
         
-        <form onSubmit={handleSubmit} className="register-form">
-          <div className="register-form-content">
-            <div className="register-field">
-              <div className="register-label">Tên đăng nhập *</div>
+        <form onSubmit={handleSubmit} className="auth-form">
+          <div className="auth-form-box">
+            <div className="auth-field">
+              <label className="auth-label">Tên đăng nhập *</label>
               <input 
                 ref={formFieldRef}
-                className="register-input"
+                className="auth-input"
                 type="text" 
                 value={formData.username}
                 onChange={(e) => handleInputChange('username', e.target.value)}
@@ -133,10 +132,10 @@ export default function RegisterPage() {
               />
             </div>
 
-            <div className="register-field">
-              <div className="register-label">Mật khẩu *</div>
+            <div className="auth-field">
+              <label className="auth-label">Mật khẩu *</label>
               <input 
-                className="register-input"
+                className="auth-input"
                 type="password" 
                 value={formData.password}
                 onChange={(e) => handleInputChange('password', e.target.value)}
@@ -146,10 +145,10 @@ export default function RegisterPage() {
               />
             </div>
 
-            <div className="register-field">
-              <div className="register-label">Xác nhận mật khẩu *</div>
+            <div className="auth-field">
+              <label className="auth-label">Xác nhận mật khẩu *</label>
               <input 
-                className="register-input"
+                className="auth-input"
                 type="password" 
                 value={formData.confirmPassword}
                 onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
@@ -160,28 +159,28 @@ export default function RegisterPage() {
             </div>
 
             {errorMessage && (
-              <div className="register-error">{errorMessage}</div>
+              <div className="auth-error">{errorMessage}</div>
             )}
 
             {successMessage && (
-              <div className="register-success">{successMessage}</div>
+              <div className="auth-success">{successMessage}</div>
             )}
 
             <button 
               type="submit" 
               disabled={isRegistering} 
-              className="register-button"
+              className="auth-button"
             >
               {isRegistering ? (
-                <div className="register-spinner"></div>
+                <div className="auth-spinner"></div>
               ) : (
                 "Đăng ký"
               )}
             </button>
 
-            <div className="register-login-link">
-              <span className="register-login-text">Đã có tài khoản? </span>
-              <Link to="/login" className="register-login-anchor">
+            <div className="auth-link-section">
+              <span className="auth-link-text">Đã có tài khoản? </span>
+              <Link to="/login" className="auth-link">
                 Đăng nhập
               </Link>
             </div>
