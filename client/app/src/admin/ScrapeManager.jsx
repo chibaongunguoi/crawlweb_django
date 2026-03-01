@@ -215,9 +215,10 @@ const ScrapeManager = () => {
       
       if (response.ok) {
         const data = await response.json();
-        if (data.jobs && data.jobs.length > 0) {
+        const jobs = data.data || data.jobs || [];
+        if (jobs && jobs.length > 0) {
           // Open job detail in new tab - adjust URL based on your routing
-          window.open(`/job/${data.jobs[0]._id}`, '_blank');
+          window.open(`/job/${jobs[0]._id}`, '_blank');
         } else {
           showToast('error', 'Không tìm thấy công việc');
         }

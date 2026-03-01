@@ -24,7 +24,8 @@ export default function JobSearch() {
       });
       
       if (response.ok) {
-        const jobs = await response.json();
+        const jobsResponse = await response.json();
+        const jobs = jobsResponse.data || jobsResponse || [];
         
         // Extract unique skills
         const allSkills = new Set();

@@ -4,7 +4,7 @@ from .views import (
     getJobDetail, login, get_user, logout, register,
     user_profile, upload_cv, get_companies, update_company,
     user_applications, application_detail, company_applications,
-    user_favorites, delete_favorite, change_password
+    user_favorites, delete_favorite, follow_count, change_password
 )
 from .admin_views import (
     admin_stats, admin_get_users, admin_delete_user,
@@ -20,6 +20,8 @@ from .scrape_views import (
 urlpatterns = [
     # path("", include("rest_framework.urls")),
     path("jobs/", getJobDetail, name="recent_jobs"),
+    path("jobs/-count/", follow_count, name="follow_count"),
+    path("jobDetail/", getJobDetail, name="jobDetail"),
     path("auth/login/", login, name="login"),
     path("auth/register/", register, name="register"),
     path("auth/user/", get_user, name="get_user"),

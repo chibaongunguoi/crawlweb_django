@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 def getJobDetail(request):
     jobs = JobDetail.objects.all()
     serializer = JobDetailSerializer(jobs, many=True)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    return Response({'data': serializer.data}, status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])
@@ -520,15 +520,35 @@ def user_profile(request):
 
 @api_view(['GET'])
 def get_companies(request):
-    """Get companies by username"""
+    """Get companies by username or name"""
     username = request.GET.get('username')
-    if not username:
-        return Response({'error': 'Username required'}, status=status.HTTP_400_BAD_REQUEST)
+    name = request.GET.get('name')
     
     try:
-        companies = Company.objects.filter(username=username)
-        serializer = CompanySerializer(companies, many=True)
-        return Response({'success': True, 'companies': serializer.data}, status=status.HTTP_200_OK)
+        if username:
+            companies = Company.objects.filter(username=username)
+        elif name:
+            companies = Company.objects.filter(name=name)
+        else:
+            return Response({'error': 'Username or name required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        companies_data = []
+        for company in companies:
+            company_dict = {
+                '_id': str(company.pk),
+                'id': str(company.pk),
+                'name': company.name,
+                'email': company.email,
+                'phone': company.phone,
+                'website': company.website,
+                'logo': company.logo,
+                'description': company.description,
+                'address': company.address,
+                'username': company.username
+            }
+            companies_data.append(company_dict)
+        
+        return Response({'success': True, 'companies': companies_data}, status=status.HTTP_200_OK)
     except Exception as e:
         logger.error(f"Get companies error: {e}")
         return Response({'error': 'Lỗi khi lấy thông tin công ty'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -610,7 +630,8 @@ def user_applications(request):
     
     elif request.method == 'POST':
         try:
-            job_id = request.data.get('jobId')
+            # Accept both jobId and JobDetailID parameter names
+            job_id = request.data.get('jobId') or request.data.get('JobDetailID')
             if not job_id:
                 return Response({'error': 'Job ID required'}, status=status.HTTP_400_BAD_REQUEST)
             
@@ -777,7 +798,7 @@ def user_favorites(request):
                 JobDetailID=job_id
             )
             
-            return Response({'success': True}, status=status.HTTP_201_CREATED)
+            return Response({'success': True, 'isFollowed': True}, status=status.HTTP_201_CREATED)
         except Exception as e:
             logger.error(f"Add favorite error: {e}")
             return Response({'error': 'Lỗi khi lưu công việc'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -799,6 +820,21 @@ def delete_favorite(request, job_id):
     except Exception as e:
         logger.error(f"Delete favorite error: {e}")
         return Response({'error': 'Lỗi khi xóa'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def follow_count(request):
+    """Get follow count for a job"""
+    try:
+        job_id = request.query_params.get('jobId')
+        if not job_id:
+            return Response({'error': 'Job ID required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        count = Follow.objects.filter(JobDetailID=job_id).count()
+        return Response({'success': True, 'count': count}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Get follow count error: {e}")
+        return Response({'error': 'Lỗi khi lấy số lượng yêu thích'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # ==================== CHANGE PASSWORD API ====================

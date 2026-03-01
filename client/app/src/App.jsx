@@ -19,24 +19,28 @@ export default function Home() {
       // Fetch jobs
       const jobsResponse = await fetch("http://localhost:8000/api/jobs/");
       const jobsData = await jobsResponse.json();
-      setJobs(jobsData);
-      if (jobsResponse.ok) {  
-        if (jobsData) {
-          // // Fetch follow counts for all jobs
-          // const jobIds = jobsData.data.map(job => job._id);
-          // const followResponse = await fetch("/api/follow/count", {
-          //   method: "POST",
-          //   headers: {
-          //     "Content-Type": "application/json",
-          //   },
-          //   body: JSON.stringify({ jobIds }),
-          // });
+      
+      if (jobsResponse.ok) {
+        // Extract data array from response
+        const jobsArray = jobsData.data || jobsData || [];
+        setJobs(jobsArray);
+        
+        // if (jobsArray.length > 0) {
+        //   // Fetch follow counts for all jobs
+        //   const jobIds = jobsArray.map(job => job._id);
+        //   const followResponse = await fetch("/api/follow/count", {
+        //     method: "POST",
+        //     headers: {
+        //       "Content-Type": "application/json",
+        //     },
+        //     body: JSON.stringify({ jobIds }),
+        //   });
           
-          // if (followResponse.ok) {
-          //   const followData = await followResponse.json();
-          //   setFollowCounts(followData);
-          // }
-        }
+        //   if (followResponse.ok) {
+        //     const followData = await followResponse.json();
+        //     setFollowCounts(followData);
+        //   }
+        // }
       }
     } catch (error) {
       console.error("Error fetching data:", error);

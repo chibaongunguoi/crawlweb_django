@@ -16,6 +16,16 @@ class JobDetailSerializer(serializers.ModelSerializer):
         model = JobDetail
         fields = '__all__'
     
+    def to_representation(self, instance):
+        """Convert the serialized data to include _id field"""
+        data = super().to_representation(instance)
+        # Ensure _id is set from the primary key
+        if 'id' in data:
+            data['_id'] = str(data['id'])
+        else:
+            data['_id'] = str(instance.pk)
+        return data
+    
     def get_skills(self, obj):
         if isinstance(obj.skills, str):
             try:
