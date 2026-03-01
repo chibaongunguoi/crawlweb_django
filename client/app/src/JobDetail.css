@@ -269,8 +269,7 @@
 }
 
 .job-detail-content {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
+  display: flex;
   gap: 30px;
   margin-bottom: 40px;
 }
