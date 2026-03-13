@@ -56,6 +56,13 @@
   color: #333;
 }
 
+.job-source {
+  font-size: 0.78rem;
+  color: #3b82f6;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
 .job-details {
   display: flex;
   align-items: center;

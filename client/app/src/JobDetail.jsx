@@ -14,6 +14,8 @@ export default function JobDetail() {
   const navigate = useNavigate();
   const { id: jobId } = useParams();
 
+  const sourceLabel = job?.source || 'unknown';
+
   // Xử lý follow/unfollow
   async function handleFollow() { 
     if (isFollowLoading) return;
@@ -267,6 +269,7 @@ export default function JobDetail() {
           <div className="job-header-info">
             <h1 className="job-title-large">{job.job_title || job.company_name}</h1>
             <h2 className="company-name">{job.company_name}</h2>
+            <div className="job-source-detail">Nguồn: {sourceLabel}</div>
             <div className="job-meta">
               <span className="meta-item">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="meta-icon">

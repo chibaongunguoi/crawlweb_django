@@ -41,6 +41,12 @@ class JobDetail(models.Model):
         db_index=True,
         help_text="URL của công việc"
     )
+    source = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="Nguồn của job (domain)"
+    )
     thumbnail = models.URLField(
         max_length=500,
         blank=True,

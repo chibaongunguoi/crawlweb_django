@@ -2,6 +2,8 @@ import './JobCard.css';
 
 export default function JobCard({ job, followCount = null, showFollowBadge = false, onClick }) {
   const hasFollowCount = showFollowBadge && followCount !== null && followCount > 0;
+  const source = job.source || 'unknown';
+
   return (
     <div 
       className={`job-card ${onClick ? 'clickable-card' : ''}`}
@@ -29,6 +31,7 @@ export default function JobCard({ job, followCount = null, showFollowBadge = fal
         </div>
         <div className="job-info">
           <h3 className="job-title">{job.job_title}</h3>
+          <div className="job-source">Nguon: {source}</div>
           <div className="job-details">
             <span className="detail-item">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">

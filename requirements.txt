@@ -1,0 +1,17 @@
+# Django Backend Dependencies
+django
+django-mongodb-backend
+django-cors-headers
+bcrypt
+PyJWT
+pymongo
+
+# Web Scraper Dependencies
+fastapi
+uvicorn
+beautifulsoup4
+colorama
+pydantic
+
+# Common Dependencies
+requests

@@ -6,6 +6,7 @@ from datetime import datetime
 import logging
 import requests
 import os
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +14,61 @@ logger = logging.getLogger(__name__)
 SCRAPER_HOST = os.getenv('SCRAPER_HOST', 'localhost')
 SCRAPER_PORT = os.getenv('SCRAPER_PORT', '37001')
 SCRAPER_URL = f'http://{SCRAPER_HOST}:{SCRAPER_PORT}/api/scrape'
+
+
+# Normalize known hostnames to stable source names.
+SOURCE_HOST_MAPPING = {
+    'devwork.vn': 'devwork',
+    'www.devwork.vn': 'devwork',
+    'devwork.com': 'devwork',
+    'www.devwork.com': 'devwork',
+    'jobs.devwork.com': 'devwork',
+    'jobs.devwork.vn': 'devwork',
+    'devwork.example': 'devwork',
+    'topcv.vn': 'topcv',
+    'www.topcv.vn': 'topcv',
+}
+
+
+def extract_source(url):
+    """Extract a compact source name from URL host, fallback to unknown."""
+    if not url:
+        return 'unknown'
+
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+
+        # Handle URLs without scheme, e.g. "example.com/jobs".
+        if not hostname:
+            parsed = urlparse(f'//{url}')
+            hostname = parsed.hostname
+
+        if not hostname:
+            return 'unknown'
+
+        hostname = hostname.lower().strip()
+        normalized_host = hostname[4:] if hostname.startswith('www.') else hostname
+
+        # 1) Exact mapping first.
+        if hostname in SOURCE_HOST_MAPPING:
+            return SOURCE_HOST_MAPPING[hostname]
+        if normalized_host in SOURCE_HOST_MAPPING:
+            return SOURCE_HOST_MAPPING[normalized_host]
+
+        # 2) Keyword/domain-family fallback for known sources.
+        if 'devwork' in normalized_host:
+            return 'devwork'
+        if 'topcv' in normalized_host:
+            return 'topcv'
+
+        # 3) Generic fallback: use first domain label.
+        if '.' in normalized_host:
+            return normalized_host.split('.')[0]
+
+        return normalized_host or 'unknown'
+    except Exception:
+        return 'unknown'
 
 
 @api_view(['POST'])
@@ -178,6 +234,7 @@ def scrape_result(request):
                     job_detail, created = JobDetail.objects.update_or_create(
                         url=url,
                         defaults={
+                            'source': extract_source(url),
                             'thumbnail': job_data.get('thumbnail'),
                             'job_title': job_data.get('job_title', ''),
                             'company_url': job_data.get('company_url'),

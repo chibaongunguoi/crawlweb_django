@@ -110,6 +110,13 @@
   margin: 0;
 }
 
+.job-source-detail {
+  margin-top: 8px;
+  color: #2563eb;
+  font-weight: 600;
+  font-size: 14px;
+}
+
 .job-meta {
   display: flex;
   gap: 24px;

@@ -1,3 +1,4 @@
+
 # Ignore MongoDB data directory
 var/mongodb/
 
