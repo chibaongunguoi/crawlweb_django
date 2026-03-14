@@ -12,6 +12,16 @@ import bcrypt
 logger = logging.getLogger(__name__)
 
 
+def _resolve_user_by_id_or_username(user_id):
+    """Resolve user by primary key first, then fallback to username."""
+    try:
+        return User.objects.get(pk=user_id)
+    except Exception:
+        # Mongo backends can raise validation errors for non-ObjectId strings.
+        # In that case, fallback to username-based lookup.
+        return User.objects.get(username=user_id)
+
+
 # ============= ADMIN STATS =============
 @api_view(['GET'])
 def admin_stats(request):
@@ -97,22 +107,64 @@ def admin_get_users(request):
         )
 
 
-@api_view(['DELETE'])
+@api_view(['GET', 'PUT', 'DELETE'])
 def admin_delete_user(request, user_id):
-    """Delete a user (admin only)"""
+    """Get, update or delete a user (admin only)."""
     try:
-        user = User.objects.get(pk=user_id)
+        user = _resolve_user_by_id_or_username(user_id)
         username = user.username
-        
-        # Delete related data
+
+        if request.method == 'GET':
+            profile = UserProfile.objects.filter(userID=username).first()
+            profile_data = {
+                'name': profile.name if profile else '',
+                'phone': profile.phone if profile else '',
+                'cv': profile.cv if profile else '',
+                # Keep these keys for frontend compatibility.
+                'email': '',
+                'address': profile.description if profile and profile.description else '',
+            }
+
+            return Response({
+                'success': True,
+                'user': {
+                    'id': str(getattr(user, 'id', user.pk)),
+                    'username': user.username,
+                    'role': user.role,
+                    'profile': profile_data,
+                }
+            }, status=status.HTTP_200_OK)
+
+        if request.method == 'PUT':
+            data = request.data or {}
+
+            role = data.get('role')
+            if role in {'admin', 'user', 'company'}:
+                user.role = role
+                user.save(update_fields=['role'])
+
+            profile_payload = data.get('profile') or {}
+            profile, _ = UserProfile.objects.get_or_create(userID=username)
+            profile.name = profile_payload.get('name', profile.name)
+            profile.phone = profile_payload.get('phone', profile.phone)
+            profile.cv = profile_payload.get('cv', profile.cv)
+            # Map UI "address" into existing profile description field.
+            if 'address' in profile_payload:
+                profile.description = profile_payload.get('address')
+            profile.save()
+
+            return Response({
+                'success': True,
+                'message': 'User updated successfully'
+            }, status=status.HTTP_200_OK)
+
+        # DELETE method
         UserProfile.objects.filter(userID=username).delete()
         Application.objects.filter(userID=username).delete()
         Follow.objects.filter(userID=username).delete()
         Notification.objects.filter(userID=username).delete()
-        
-        # Delete user
         user.delete()
-        
+
         return Response({
             'success': True,
             'message': 'User deleted successfully'
@@ -123,9 +175,9 @@ def admin_delete_user(request, user_id):
             status=status.HTTP_404_NOT_FOUND
         )
     except Exception as e:
-        logger.error(f"Error deleting user: {str(e)}")
+        logger.error(f"Error handling user detail endpoint: {str(e)}")
         return Response(
-            {'error': 'Failed to delete user'},
+            {'error': 'Failed to process user request'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
