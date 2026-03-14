@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from .models import ScrapeJob, JobDetail
 from datetime import datetime
+from django.utils import timezone
 import logging
 import requests
 import os
@@ -27,6 +28,10 @@ SOURCE_HOST_MAPPING = {
     'devwork.example': 'devwork',
     'topcv.vn': 'topcv',
     'www.topcv.vn': 'topcv',
+    'itworks.asia': 'itworks',
+    'www.itworks.asia': 'itworks',
+    'itwork.asia': 'itworks',
+    'www.itwork.asia': 'itworks',
 }
 
 
@@ -69,6 +74,30 @@ def extract_source(url):
         return normalized_host or 'unknown'
     except Exception:
         return 'unknown'
+
+
+def _parse_progress_payload(payload: dict):
+    """Support both nested and flat progress payload formats."""
+    metadata = payload.get('metadata', {}) or {}
+    data = payload.get('data', {}) or {}
+
+    # Preferred shape (nested): {metadata: {jobId}, data: {processed, currentUrl, progress}}
+    job_id = metadata.get('jobId')
+    processed = data.get('processed', data.get('processedUrls'))
+    current_url = data.get('currentUrl')
+    progress = data.get('progress')
+
+    # Backward-compatible flat shape: {jobId, processedUrls, currentUrl, progress}
+    if not job_id:
+        job_id = payload.get('jobId')
+    if processed is None:
+        processed = payload.get('processedUrls', payload.get('processed'))
+    if current_url is None:
+        current_url = payload.get('currentUrl')
+    if progress is None:
+        progress = payload.get('progress')
+
+    return job_id, processed, current_url, progress
 
 
 @api_view(['POST'])
@@ -135,7 +164,7 @@ def scrape_upload(request):
             logger.error(f"Error calling scraper: {str(e)}")
             scrape_job.status = 'failed'
             scrape_job.errorMessage = f'Failed to start scraper service: {str(e)}'
-            scrape_job.completedAt = datetime.now()
+            scrape_job.completedAt = timezone.now()
             scrape_job.save()
         
         return Response({
@@ -155,7 +184,7 @@ def scrape_progress(request):
     """Callback endpoint for scraper progress updates"""
     try:
         data = request.data
-        job_id = data.get('metadata', {}).get('jobId')
+        job_id, processed, current_url, progress = _parse_progress_payload(data)
         
         if not job_id:
             return Response(
@@ -172,10 +201,9 @@ def scrape_progress(request):
             )
         
         # Update progress
-        progress_data = data.get('data', {})
-        scrape_job.processedUrls = progress_data.get('processed', 0)
-        scrape_job.currentUrl = progress_data.get('currentUrl', '')
-        scrape_job.progress = progress_data.get('progress', 0)
+        scrape_job.processedUrls = int(processed or 0)
+        scrape_job.currentUrl = current_url or ''
+        scrape_job.progress = int(progress or 0)
         scrape_job.save()
         
         logger.info(f"Updated progress for job {job_id}: {scrape_job.progress}%")
@@ -260,7 +288,7 @@ def scrape_result(request):
             scrape_job.errorMessage = data.get('message', 'Unknown error')
             logger.error(f"Job {job_id} failed: {scrape_job.errorMessage}")
         
-        scrape_job.completedAt = datetime.now()
+        scrape_job.completedAt = timezone.now()
         scrape_job.metadata = data.get('metadata', {})
         scrape_job.save()
         

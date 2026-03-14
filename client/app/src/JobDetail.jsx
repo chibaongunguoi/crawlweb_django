@@ -184,6 +184,10 @@ export default function JobDetail() {
       .join('\n');           // Nối bằng xuống dòng
   }
 
+  function hasHtmlMarkup(text) {
+    return typeof text === 'string' && /<[a-z][\s\S]*>/i.test(text);
+  }
+
   useEffect(() => {
     if (jobId) {
       fetchJobDetail(jobId);
@@ -368,9 +372,16 @@ export default function JobDetail() {
           {job.descriptions && Object.entries(job.descriptions).map(([key, value]) => (
             <section className="content-section" key={key}>
               <h3>{key}</h3>
-              <div className="content-text">
-                {convertInlineAsterisks(value)}
-              </div>
+              {hasHtmlMarkup(value) ? (
+                <div
+                  className="content-html"
+                  dangerouslySetInnerHTML={{ __html: value }}
+                />
+              ) : (
+                <div className="content-text">
+                  {convertInlineAsterisks(value)}
+                </div>
+              )}
             </section>
           ))}
 
