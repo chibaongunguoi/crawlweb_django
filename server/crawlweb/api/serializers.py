@@ -10,6 +10,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class JobDetailSerializer(serializers.ModelSerializer):
+    id = serializers.CharField(read_only=True)
     skills = serializers.SerializerMethodField()
     
     class Meta:

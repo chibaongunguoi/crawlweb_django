@@ -1,7 +1,40 @@
 import './JobCard.css';
 
-export default function JobCard({ job, followCount = null, showFollowBadge = false, onClick }) {
+export default function JobCard({ job, followCount = null, showFollowBadge = false, onClick, highlightTerms = [] }) {
   const hasFollowCount = showFollowBadge && followCount !== null && followCount > 0;
+  const source = job.source || 'unknown';
+
+  const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  const highlightText = (text) => {
+    const rawText = text ?? '';
+    const terms = (highlightTerms || []).filter(Boolean);
+
+    if (!rawText || terms.length === 0) {
+      return rawText;
+    }
+
+    const pattern = terms.map((term) => escapeRegex(term)).join('|');
+    if (!pattern) {
+      return rawText;
+    }
+
+    const regex = new RegExp(`(${pattern})`, 'ig');
+    const parts = String(rawText).split(regex);
+
+    return parts.map((part, index) => {
+      const isMatch = terms.some(
+        (term) => part && part.toLowerCase() === term.toLowerCase()
+      );
+
+      return isMatch ? (
+        <mark key={`${part}-${index}`} className="text-highlight">{part}</mark>
+      ) : (
+        <span key={`${part}-${index}`}>{part}</span>
+      );
+    });
+  };
+
   return (
     <div 
       className={`job-card ${onClick ? 'clickable-card' : ''}`}
@@ -28,7 +61,8 @@ export default function JobCard({ job, followCount = null, showFollowBadge = fal
           />
         </div>
         <div className="job-info">
-          <h3 className="job-title">{job.job_title}</h3>
+          <h3 className="job-title">{highlightText(job.job_title)}</h3>
+          <div className="job-source">Nguồn: {source}</div>
           <div className="job-details">
             <span className="detail-item">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -39,7 +73,7 @@ export default function JobCard({ job, followCount = null, showFollowBadge = fal
                   d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                 />
               </svg>
-              {job.salary}
+              {highlightText(job.salary)}
             </span>
             <span className="detail-item">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -56,13 +90,13 @@ export default function JobCard({ job, followCount = null, showFollowBadge = fal
                   d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
                 />
               </svg>
-              {job.province}
+              {highlightText(job.province)}
             </span>
           </div>
           <div className="skills-list">
             {job.skills && job.skills.map((skill, index) => (
               <span key={index} className="skill-tag">
-                {skill}
+                {highlightText(skill)}
               </span>
             ))}
           </div>

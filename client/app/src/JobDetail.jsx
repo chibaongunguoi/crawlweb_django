@@ -14,22 +14,37 @@ export default function JobDetail() {
   const navigate = useNavigate();
   const { id: jobId } = useParams();
 
+  const sourceLabel = job?.source || 'unknown';
+
   // Xử lý follow/unfollow
   async function handleFollow() { 
     if (isFollowLoading) return;
     
     try {
       setIsFollowLoading(true);
-      const response = await fetch("http://localhost:8000/api/user/favorites/", {
-        method: "POST",
+      const endpoint = isFollowed
+        ? `http://localhost:8000/api/user/favorites/${jobId}/`
+        : "http://localhost:8000/api/user/favorites/";
+      const method = isFollowed ? "DELETE" : "POST";
+      const requestOptions = {
+        method,
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ jobId: jobId }),
-      });
+      };
+
+      if (!isFollowed) {
+        requestOptions.body = JSON.stringify({ jobId: jobId });
+      }
+
+      const response = await fetch(endpoint, requestOptions);
 
       if (response.ok) {
-        const data = await response.json();
-        setIsFollowed(data.isFollowed || !isFollowed);
+        if (method === "POST") {
+          const data = await response.json();
+          setIsFollowed(data.isFollowed ?? true);
+        } else {
+          setIsFollowed(false);
+        }
         // Update follow count
         fetchFollowCount(jobId);
       } else {
@@ -37,6 +52,14 @@ export default function JobDetail() {
         if (response.status === 401) {
           // User chưa đăng nhập, chuyển đến trang login
           navigate('/login');
+        } else if (response.status === 404 && method === "DELETE") {
+          // Nếu bản ghi đã bị xóa ở phía server thì đồng bộ lại trạng thái client
+          setIsFollowed(false);
+          fetchFollowCount(jobId);
+        } else if (response.status === 409 && method === "POST") {
+          // Trường hợp favorite đã tồn tại, đồng bộ lại trạng thái client
+          setIsFollowed(true);
+          fetchFollowCount(jobId);
         } else {
           console.error('Follow error:', errorData.error);
           alert('Có lỗi xảy ra khi thực hiện thao tác');
@@ -182,6 +205,10 @@ export default function JobDetail() {
       .join('\n');           // Nối bằng xuống dòng
   }
 
+  function hasHtmlMarkup(text) {
+    return typeof text === 'string' && /<[a-z][\s\S]*>/i.test(text);
+  }
+
   useEffect(() => {
     if (jobId) {
       fetchJobDetail(jobId);
@@ -267,6 +294,7 @@ export default function JobDetail() {
           <div className="job-header-info">
             <h1 className="job-title-large">{job.job_title || job.company_name}</h1>
             <h2 className="company-name">{job.company_name}</h2>
+            <div className="job-source-detail">Nguồn: {sourceLabel}</div>
             <div className="job-meta">
               <span className="meta-item">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="meta-icon">
@@ -365,9 +393,16 @@ export default function JobDetail() {
           {job.descriptions && Object.entries(job.descriptions).map(([key, value]) => (
             <section className="content-section" key={key}>
               <h3>{key}</h3>
-              <div className="content-text">
-                {convertInlineAsterisks(value)}
-              </div>
+              {hasHtmlMarkup(value) ? (
+                <div
+                  className="content-html"
+                  dangerouslySetInnerHTML={{ __html: value }}
+                />
+              ) : (
+                <div className="content-text">
+                  {convertInlineAsterisks(value)}
+                </div>
+              )}
             </section>
           ))}
 

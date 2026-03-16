@@ -110,6 +110,13 @@
   margin: 0;
 }
 
+.job-source-detail {
+  margin-top: 8px;
+  color: #2563eb;
+  font-weight: 600;
+  font-size: 14px;
+}
+
 .job-meta {
   display: flex;
   gap: 24px;
@@ -303,6 +310,45 @@
   line-height: 1.7;
   font-size: 16px;
   white-space: pre-line;
+}
+
+.content-html {
+  color: #4b5563;
+  line-height: 1.7;
+  font-size: 16px;
+}
+
+.content-html h4,
+.content-html h5,
+.content-html h6 {
+  color: #111827;
+  font-weight: 700;
+  margin: 14px 0 8px;
+}
+
+.content-html p {
+  margin: 0 0 12px;
+}
+
+.content-html ul,
+.content-html ol {
+  margin: 0 0 14px 22px;
+  padding: 0;
+}
+
+.content-html li {
+  margin: 4px 0;
+}
+
+.content-html strong,
+.content-html b {
+  color: #111827;
+  font-weight: 700;
+}
+
+.content-html a {
+  color: #1d4ed8;
+  text-decoration: underline;
 }
 
 .skills-container {

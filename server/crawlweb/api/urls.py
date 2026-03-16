@@ -10,7 +10,10 @@ from .admin_views import (
     admin_stats, admin_get_users, admin_delete_user,
     admin_get_jobs, admin_delete_job, admin_update_job,
     admin_companies, admin_company_detail,
-    admin_get_notifications, admin_delete_notification
+    admin_get_notifications, admin_delete_notification,
+    admin_jobs_over_time, admin_top_skills,
+    admin_follow_counts, admin_application_counts,
+    admin_source_breakdown, admin_scraper_health
 )
 from .scrape_views import (
     scrape_upload, scrape_progress, scrape_result,
@@ -47,6 +50,12 @@ urlpatterns = [
     
     # Admin Routes
     path("admin/stats/", admin_stats, name="admin_stats"),
+    path("admin/stats/jobs-over-time/", admin_jobs_over_time, name="admin_jobs_over_time"),
+    path("admin/stats/top-skills/", admin_top_skills, name="admin_top_skills"),
+    path("admin/stats/follow-counts/", admin_follow_counts, name="admin_follow_counts"),
+    path("admin/stats/application-counts/", admin_application_counts, name="admin_application_counts"),
+    path("admin/stats/source-breakdown/", admin_source_breakdown, name="admin_source_breakdown"),
+    path("admin/stats/scraper-health/", admin_scraper_health, name="admin_scraper_health"),
     path("admin/users/", admin_get_users, name="admin_get_users"),
     path("admin/users/count/", admin_get_users, name="admin_users_count"),
     path("admin/users/<str:user_id>/", admin_delete_user, name="admin_delete_user"),

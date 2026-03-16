@@ -1,9 +1,12 @@
+
 # Ignore MongoDB data directory
 var/mongodb/
 
 # Node modules
 client/app/node_modules/
 node_modules/
+client/app/build/
+client/app/.cache/
 
 # Python cache
 server/crawlweb/api/__pycache__/
@@ -11,6 +14,35 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.pytest_cache/
+
+# Python virtual environments
+venv/
+.venv/
+env/
+server/myworld/
+server/scraper/venv/
+
+# Python packaging/build artifacts
+*.egg-info/
+dist/
+build/
+
+# Local databases
+*.sqlite3
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Runtime files
+logs/
+*.pid
+*.out
+
+# Notebook checkpoints
+.ipynb_checkpoints/
 
 # Log files
 *.log
@@ -18,3 +50,7 @@ __pycache__/
 # IDE
 .vscode/
 .idea/
+
+# OS files
+.DS_Store
+Thumbs.db

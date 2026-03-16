@@ -3,9 +3,11 @@ from rest_framework.response import Response
 from rest_framework import status
 from .models import ScrapeJob, JobDetail
 from datetime import datetime
+from django.utils import timezone
 import logging
 import requests
 import os
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +15,89 @@ logger = logging.getLogger(__name__)
 SCRAPER_HOST = os.getenv('SCRAPER_HOST', 'localhost')
 SCRAPER_PORT = os.getenv('SCRAPER_PORT', '37001')
 SCRAPER_URL = f'http://{SCRAPER_HOST}:{SCRAPER_PORT}/api/scrape'
+
+
+# Normalize known hostnames to stable source names.
+SOURCE_HOST_MAPPING = {
+    'devwork.vn': 'devwork',
+    'www.devwork.vn': 'devwork',
+    'devwork.com': 'devwork',
+    'www.devwork.com': 'devwork',
+    'jobs.devwork.com': 'devwork',
+    'jobs.devwork.vn': 'devwork',
+    'devwork.example': 'devwork',
+    'topcv.vn': 'topcv',
+    'www.topcv.vn': 'topcv',
+    'itworks.asia': 'itworks',
+    'www.itworks.asia': 'itworks',
+    'itwork.asia': 'itworks',
+    'www.itwork.asia': 'itworks',
+}
+
+
+def extract_source(url):
+    """Extract a compact source name from URL host, fallback to unknown."""
+    if not url:
+        return 'unknown'
+
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+
+        # Handle URLs without scheme, e.g. "example.com/jobs".
+        if not hostname:
+            parsed = urlparse(f'//{url}')
+            hostname = parsed.hostname
+
+        if not hostname:
+            return 'unknown'
+
+        hostname = hostname.lower().strip()
+        normalized_host = hostname[4:] if hostname.startswith('www.') else hostname
+
+        # 1) Exact mapping first.
+        if hostname in SOURCE_HOST_MAPPING:
+            return SOURCE_HOST_MAPPING[hostname]
+        if normalized_host in SOURCE_HOST_MAPPING:
+            return SOURCE_HOST_MAPPING[normalized_host]
+
+        # 2) Keyword/domain-family fallback for known sources.
+        if 'devwork' in normalized_host:
+            return 'devwork'
+        if 'topcv' in normalized_host:
+            return 'topcv'
+
+        # 3) Generic fallback: use first domain label.
+        if '.' in normalized_host:
+            return normalized_host.split('.')[0]
+
+        return normalized_host or 'unknown'
+    except Exception:
+        return 'unknown'
+
+
+def _parse_progress_payload(payload: dict):
+    """Support both nested and flat progress payload formats."""
+    metadata = payload.get('metadata', {}) or {}
+    data = payload.get('data', {}) or {}
+
+    # Preferred shape (nested): {metadata: {jobId}, data: {processed, currentUrl, progress}}
+    job_id = metadata.get('jobId')
+    processed = data.get('processed', data.get('processedUrls'))
+    current_url = data.get('currentUrl')
+    progress = data.get('progress')
+
+    # Backward-compatible flat shape: {jobId, processedUrls, currentUrl, progress}
+    if not job_id:
+        job_id = payload.get('jobId')
+    if processed is None:
+        processed = payload.get('processedUrls', payload.get('processed'))
+    if current_url is None:
+        current_url = payload.get('currentUrl')
+    if progress is None:
+        progress = payload.get('progress')
+
+    return job_id, processed, current_url, progress
 
 
 @api_view(['POST'])
@@ -79,7 +164,7 @@ def scrape_upload(request):
             logger.error(f"Error calling scraper: {str(e)}")
             scrape_job.status = 'failed'
             scrape_job.errorMessage = f'Failed to start scraper service: {str(e)}'
-            scrape_job.completedAt = datetime.now()
+            scrape_job.completedAt = timezone.now()
             scrape_job.save()
         
         return Response({
@@ -99,7 +184,7 @@ def scrape_progress(request):
     """Callback endpoint for scraper progress updates"""
     try:
         data = request.data
-        job_id = data.get('metadata', {}).get('jobId')
+        job_id, processed, current_url, progress = _parse_progress_payload(data)
         
         if not job_id:
             return Response(
@@ -116,10 +201,9 @@ def scrape_progress(request):
             )
         
         # Update progress
-        progress_data = data.get('data', {})
-        scrape_job.processedUrls = progress_data.get('processed', 0)
-        scrape_job.currentUrl = progress_data.get('currentUrl', '')
-        scrape_job.progress = progress_data.get('progress', 0)
+        scrape_job.processedUrls = int(processed or 0)
+        scrape_job.currentUrl = current_url or ''
+        scrape_job.progress = int(progress or 0)
         scrape_job.save()
         
         logger.info(f"Updated progress for job {job_id}: {scrape_job.progress}%")
@@ -178,6 +262,7 @@ def scrape_result(request):
                     job_detail, created = JobDetail.objects.update_or_create(
                         url=url,
                         defaults={
+                            'source': extract_source(url),
                             'thumbnail': job_data.get('thumbnail'),
                             'job_title': job_data.get('job_title', ''),
                             'company_url': job_data.get('company_url'),
@@ -203,7 +288,7 @@ def scrape_result(request):
             scrape_job.errorMessage = data.get('message', 'Unknown error')
             logger.error(f"Job {job_id} failed: {scrape_job.errorMessage}")
         
-        scrape_job.completedAt = datetime.now()
+        scrape_job.completedAt = timezone.now()
         scrape_job.metadata = data.get('metadata', {})
         scrape_job.save()
         

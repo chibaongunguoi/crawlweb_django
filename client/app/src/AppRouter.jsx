@@ -27,6 +27,7 @@ export default function AppRouter() {
       <main className="main-content-wrapper">
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/search" element={<Home />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/user/profile" element={<UserProfile />} />

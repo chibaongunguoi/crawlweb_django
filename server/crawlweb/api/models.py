@@ -41,6 +41,12 @@ class JobDetail(models.Model):
         db_index=True,
         help_text="URL của công việc"
     )
+    source = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="Nguồn của job (domain)"
+    )
     thumbnail = models.URLField(
         max_length=500,
         blank=True,
@@ -251,11 +257,13 @@ class Application(models.Model):
 class Follow(models.Model):
     userID = models.CharField(
         max_length=150,
+        db_column='userId',
         db_index=True,
         help_text="Username của người dùng"
     )
     JobDetailID = models.CharField(
         max_length=255,
+        db_column='jobId',
         db_index=True,
         help_text="ID của JobDetail"
     )

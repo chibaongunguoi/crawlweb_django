@@ -183,10 +183,15 @@ class ScrapeManager:
             progress_percentage = int((processed / total) * 100) if total > 0 else 0
 
             payload = {
-                "jobId": jobId,
-                "processedUrls": processed,
-                "currentUrl": current_url,
-                "progress": progress_percentage,
+                "metadata": {
+                    "jobId": jobId,
+                },
+                "data": {
+                    "processed": processed,
+                    "processedUrls": processed,
+                    "currentUrl": current_url,
+                    "progress": progress_percentage,
+                },
             }
 
             print(f"Sending progress update: {processed}/{total} ({progress_percentage}%) - {current_url}")
