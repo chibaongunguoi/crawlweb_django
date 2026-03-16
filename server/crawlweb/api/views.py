@@ -800,6 +800,9 @@ def user_favorites(request):
             
             return Response({'success': True, 'isFollowed': True}, status=status.HTTP_201_CREATED)
         except Exception as e:
+            # Mongo duplicate key (E11000) can happen with concurrent requests.
+            if 'E11000' in str(e):
+                return Response({'error': 'Đã lưu công việc này'}, status=status.HTTP_409_CONFLICT)
             logger.error(f"Add favorite error: {e}")
             return Response({'error': 'Lỗi khi lưu công việc'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

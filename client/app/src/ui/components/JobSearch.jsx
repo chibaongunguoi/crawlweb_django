@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import Search from "./Search";
 
 export default function JobSearch() {
@@ -9,10 +9,18 @@ export default function JobSearch() {
   const [skills, setSkills] = useState([]);
   const [cities, setCities] = useState([]);
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     fetchSkillsAndCities();
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    setSearchQuery(params.get('q') || '');
+    setSelectedSkill(params.get('skill') || '');
+    setSelectedCity(params.get('city') || '');
+  }, [location.search]);
 
   const fetchSkillsAndCities = async () => {
     try {
@@ -88,7 +96,10 @@ export default function JobSearch() {
     
     if (params.toString()) {
       navigate(`/search?${params.toString()}`);
+      return;
     }
+
+    navigate('/');
   };
 
   const handleSearchKeyPress = (e) => {
@@ -106,6 +117,7 @@ export default function JobSearch() {
         onSearch={handleSearch}
         placeholder="Tìm kiếm việc làm"
       />
+    
       <div className="search-filters">
         <select 
           className="filter-select"
@@ -127,6 +139,13 @@ export default function JobSearch() {
             <option key={index} value={city}>{city}</option>
           ))}
         </select>
+        <button
+        type="button"
+        className="search-submit-button"
+        onClick={handleSearch}
+        >
+        Tìm kiếm
+      </button>
       </div>
     </div>
   );

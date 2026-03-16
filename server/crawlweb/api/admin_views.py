@@ -1,11 +1,14 @@
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
-from .models import User, JobDetail, Company, Notification, Application, Follow, UserProfile
+from django.db.models import Count
+from .models import User, JobDetail, Company, Notification, Application, Follow, UserProfile, ScrapeJob
 from .serializers import (
     UserSerializer, JobDetailSerializer, CompanySerializer, 
     NotificationSerializer, ApplicationSerializer
 )
+from collections import Counter
+from datetime import datetime, timedelta
 import logging
 import bcrypt
 
@@ -530,5 +533,239 @@ def admin_delete_notification(request, notification_id):
         logger.error(f"Error deleting notification: {str(e)}")
         return Response(
             {'error': 'Failed to delete notification'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+def _parse_date_range(request):
+    from_str = request.query_params.get('from')
+    to_str = request.query_params.get('to')
+
+    try:
+        from_dt = datetime.strptime(from_str, '%Y-%m-%d') if from_str else (datetime.utcnow() - timedelta(days=30))
+    except ValueError:
+        from_dt = datetime.utcnow() - timedelta(days=30)
+
+    try:
+        to_dt = datetime.strptime(to_str, '%Y-%m-%d') if to_str else datetime.utcnow()
+        to_dt = to_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+    except ValueError:
+        to_dt = datetime.utcnow()
+
+    return from_dt, to_dt
+
+
+def _time_bucket(dt, interval):
+    if interval == 'month':
+        return dt.strftime('%Y-%m')
+    if interval == 'week':
+        iso_year, iso_week, _ = dt.isocalendar()
+        return f"{iso_year}-W{iso_week:02d}"
+    return dt.strftime('%Y-%m-%d')
+
+
+@api_view(['GET'])
+def admin_jobs_over_time(request):
+    """Aggregate jobs over time by day/week/month."""
+    try:
+        interval = request.query_params.get('interval', 'day').lower()
+        if interval not in {'day', 'week', 'month'}:
+            interval = 'day'
+
+        from_dt, to_dt = _parse_date_range(request)
+        jobs = JobDetail.objects.filter(collected_at__gte=from_dt, collected_at__lte=to_dt)
+
+        buckets = Counter()
+        for job in jobs:
+            if not job.collected_at:
+                continue
+            buckets[_time_bucket(job.collected_at, interval)] += 1
+
+        data = [{'x': key, 'y': buckets[key]} for key in sorted(buckets.keys())]
+
+        return Response({
+            'success': True,
+            'meta': {
+                'interval': interval,
+                'from': from_dt.isoformat(),
+                'to': to_dt.isoformat(),
+            },
+            'data': data,
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error getting jobs over time: {str(e)}", exc_info=True)
+        return Response(
+            {'error': 'Failed to aggregate jobs over time'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+def admin_top_skills(request):
+    """Aggregate top skills from JobDetail.skills array."""
+    try:
+        from_dt, to_dt = _parse_date_range(request)
+        limit = int(request.query_params.get('limit', 20))
+        limit = max(1, min(limit, 100))
+
+        jobs = JobDetail.objects.filter(collected_at__gte=from_dt, collected_at__lte=to_dt)
+        skill_counter = Counter()
+
+        for job in jobs:
+            if not isinstance(job.skills, list):
+                continue
+            for skill in job.skills:
+                if skill and isinstance(skill, str):
+                    normalized = skill.strip()
+                    if normalized:
+                        skill_counter[normalized] += 1
+
+        top = skill_counter.most_common(limit)
+        data = [{'label': label, 'value': value} for label, value in top]
+
+        return Response({
+            'success': True,
+            'data': data,
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error getting top skills: {str(e)}", exc_info=True)
+        return Response(
+            {'error': 'Failed to aggregate top skills'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+def admin_follow_counts(request):
+    """Top jobs by favorites count."""
+    try:
+        top = int(request.query_params.get('top', 50))
+        top = max(1, min(top, 200))
+
+        grouped = list(
+            Follow.objects.values('JobDetailID')
+            .annotate(count=Count('id'))
+            .order_by('-count')[:top]
+        )
+
+        job_ids = [item['JobDetailID'] for item in grouped if item.get('JobDetailID')]
+        jobs = JobDetail.objects.filter(pk__in=job_ids)
+        jobs_map = {str(job.pk): job for job in jobs}
+
+        data = []
+        for item in grouped:
+            job_id = item.get('JobDetailID')
+            job = jobs_map.get(str(job_id))
+            data.append({
+                'jobId': job_id,
+                'count': item.get('count', 0),
+                'title': job.job_title if job else 'Unknown job',
+                'company': job.company_name if job else 'Unknown company',
+            })
+
+        return Response({'success': True, 'data': data}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error getting follow counts: {str(e)}", exc_info=True)
+        return Response(
+            {'error': 'Failed to aggregate follow counts'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+def admin_application_counts(request):
+    """Top jobs by application count."""
+    try:
+        top = int(request.query_params.get('top', 50))
+        top = max(1, min(top, 200))
+
+        grouped = list(
+            Application.objects.values('JobDetailID')
+            .annotate(count=Count('id'))
+            .order_by('-count')[:top]
+        )
+
+        job_ids = [item['JobDetailID'] for item in grouped if item.get('JobDetailID')]
+        jobs = JobDetail.objects.filter(pk__in=job_ids)
+        jobs_map = {str(job.pk): job for job in jobs}
+
+        data = []
+        for item in grouped:
+            job_id = item.get('JobDetailID')
+            job = jobs_map.get(str(job_id))
+            data.append({
+                'jobId': job_id,
+                'count': item.get('count', 0),
+                'title': job.job_title if job else 'Unknown job',
+                'company': job.company_name if job else 'Unknown company',
+            })
+
+        return Response({'success': True, 'data': data}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error getting application counts: {str(e)}", exc_info=True)
+        return Response(
+            {'error': 'Failed to aggregate application counts'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+def admin_source_breakdown(request):
+    """Breakdown jobs by source domain."""
+    try:
+        from_dt, to_dt = _parse_date_range(request)
+        grouped = list(
+            JobDetail.objects.filter(collected_at__gte=from_dt, collected_at__lte=to_dt)
+            .values('source')
+            .annotate(value=Count('id'))
+            .order_by('-value')
+        )
+
+        data = [
+            {
+                'label': item.get('source') or 'unknown',
+                'value': item.get('value', 0)
+            }
+            for item in grouped
+        ]
+
+        return Response({'success': True, 'data': data}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error getting source breakdown: {str(e)}", exc_info=True)
+        return Response(
+            {'error': 'Failed to aggregate source breakdown'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+def admin_scraper_health(request):
+    """Get scraper status counts for selected period."""
+    try:
+        period = request.query_params.get('period', '7d').lower()
+        period_map = {'7d': 7, '14d': 14, '30d': 30, '90d': 90}
+        days = period_map.get(period, 7)
+        from_dt = datetime.utcnow() - timedelta(days=days)
+
+        grouped = list(
+            ScrapeJob.objects.filter(createdAt__gte=from_dt)
+            .values('status')
+            .annotate(count=Count('id'))
+            .order_by('-count')
+        )
+
+        data = [
+            {
+                'status': item.get('status') or 'unknown',
+                'count': item.get('count', 0)
+            }
+            for item in grouped
+        ]
+
+        return Response({'success': True, 'period': period, 'data': data}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error getting scraper health: {str(e)}", exc_info=True)
+        return Response(
+            {'error': 'Failed to aggregate scraper health'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )

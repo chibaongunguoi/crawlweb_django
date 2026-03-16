@@ -1,5 +1,9 @@
 import React, { useEffect, useState } from "react";
 import "../admin.css";
+import JobsOverTimeChart from "./charts/JobsOverTimeChart";
+import TopSkillsChart from "./charts/TopSkillsChart";
+import FollowApplyChart from "./charts/FollowApplyChart";
+import SourceBreakdownChart from "./charts/SourceBreakdownChart";
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState({
@@ -8,6 +12,8 @@ export default function AdminDashboard() {
     totalCompanies: 0
   });
   const [loading, setLoading] = useState(true);
+  const [timeRange, setTimeRange] = useState({ from: "", to: "" });
+  const [filters, setFilters] = useState({ interval: "day", limit: 15, top: 10 });
 
   useEffect(() => {
     fetchStats();
@@ -34,6 +40,10 @@ export default function AdminDashboard() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDrilldown = (payload) => {
+    console.log("Chart drilldown:", payload);
   };
 
   if (loading) {
@@ -67,6 +77,43 @@ export default function AdminDashboard() {
           <div className="stat-label">Tổng số công ty</div>
           <div className="stat-number">{stats.totalCompanies}</div>
         </div>
+      </div>
+
+      <div className="viz-filters">
+        <label>
+          Từ ngày
+          <input
+            type="date"
+            value={timeRange.from}
+            onChange={(e) => setTimeRange((prev) => ({ ...prev, from: e.target.value }))}
+          />
+        </label>
+        <label>
+          Đến ngày
+          <input
+            type="date"
+            value={timeRange.to}
+            onChange={(e) => setTimeRange((prev) => ({ ...prev, to: e.target.value }))}
+          />
+        </label>
+        <label>
+          Nhóm thời gian
+          <select
+            value={filters.interval}
+            onChange={(e) => setFilters((prev) => ({ ...prev, interval: e.target.value }))}
+          >
+            <option value="day">Ngày</option>
+            <option value="week">Tuần</option>
+            <option value="month">Tháng</option>
+          </select>
+        </label>
+      </div>
+
+      <div className="charts-grid">
+        <JobsOverTimeChart timeRange={timeRange} filters={filters} onDrilldown={handleDrilldown} />
+        <TopSkillsChart timeRange={timeRange} filters={filters} onDrilldown={handleDrilldown} />
+        <SourceBreakdownChart timeRange={timeRange} onDrilldown={handleDrilldown} />
+        <FollowApplyChart filters={filters} onDrilldown={handleDrilldown} />
       </div>
     </div>
   );

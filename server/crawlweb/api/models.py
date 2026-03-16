@@ -257,11 +257,13 @@ class Application(models.Model):
 class Follow(models.Model):
     userID = models.CharField(
         max_length=150,
+        db_column='userId',
         db_index=True,
         help_text="Username của người dùng"
     )
     JobDetailID = models.CharField(
         max_length=255,
+        db_column='jobId',
         db_index=True,
         help_text="ID của JobDetail"
     )
