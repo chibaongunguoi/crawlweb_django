@@ -2,7 +2,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from .models import ScrapeJob, JobDetail
-from .job_utils import parse_deadline_value, extract_deadline_from_job_info
+from .job_utils import parse_deadline_value, extract_deadline_from_job_info, normalize_job_info_dates
 from .scrape_queue import get_scrape_queue, compute_next_run
 from .models import ScrapeSchedule
 from datetime import datetime
@@ -245,9 +245,12 @@ def scrape_result(request):
                     if not url:
                         continue
 
+                    job_info = job_data.get('job_info')
+                    normalized_job_info = normalize_job_info_dates(job_info)
+
                     raw_deadline = job_data.get('deadline')
                     if not raw_deadline:
-                        raw_deadline = extract_deadline_from_job_info(job_data.get('job_info'))
+                        raw_deadline = extract_deadline_from_job_info(normalized_job_info or job_info)
                     deadline_value = parse_deadline_value(raw_deadline)
                         
                     # Create or update JobDetail
@@ -264,7 +267,7 @@ def scrape_result(request):
                             'deadline': deadline_value,
                             'skills': job_data.get('skills', []),
                             'descriptions': job_data.get('descriptions'),
-                            'job_info': job_data.get('job_info'),
+                            'job_info': normalized_job_info,
                         }
                     )
                     saved_count += 1

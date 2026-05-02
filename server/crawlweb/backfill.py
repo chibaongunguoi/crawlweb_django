@@ -6,6 +6,11 @@ import requests
 
 from api.models import JobDetail
 from api.scrape_views import extract_source
+from api.job_utils import (
+    parse_deadline_value,
+    extract_deadline_from_job_info,
+    normalize_job_info_dates,
+)
 
 
 def _is_plain_text_description(value):
@@ -127,6 +132,40 @@ def _refresh_itworks_formatting(timeout=30):
     return scanned, refreshed, skipped, failed
 
 
+def _normalize_deadlines():
+    scanned = 0
+    updated = 0
+    updated_deadline = 0
+    updated_job_info = 0
+
+    for job in JobDetail.objects.all():
+        scanned += 1
+        update_fields = []
+
+        job_info = job.job_info
+        normalized_job_info = normalize_job_info_dates(job_info)
+        if normalized_job_info is not None and normalized_job_info != job_info:
+            job.job_info = normalized_job_info
+            update_fields.append("job_info")
+            updated_job_info += 1
+
+        deadline_value = parse_deadline_value(job.deadline) if job.deadline else None
+        if not deadline_value:
+            raw_deadline = extract_deadline_from_job_info(normalized_job_info or job_info)
+            deadline_value = parse_deadline_value(raw_deadline)
+
+        if deadline_value and deadline_value != job.deadline:
+            job.deadline = deadline_value
+            update_fields.append("deadline")
+            updated_deadline += 1
+
+        if update_fields:
+            job.save(update_fields=update_fields)
+            updated += 1
+
+    return scanned, updated, updated_deadline, updated_job_info
+
+
 def main():
     mode = (os.getenv("BACKFILL_MODE") or "all").strip().lower()
     print(f"[backfill] mode={mode}")
@@ -140,6 +179,14 @@ def main():
         print(
             "[backfill][itworks] "
             f"scanned={scanned} refreshed={refreshed} skipped={skipped} failed={failed}"
+        )
+
+    if mode in {"all", "deadline", "date", "dates"}:
+        scanned, updated, updated_deadline, updated_job_info = _normalize_deadlines()
+        print(
+            "[backfill][deadline] "
+            f"scanned={scanned} updated={updated} "
+            f"deadline={updated_deadline} job_info={updated_job_info}"
         )
 
 

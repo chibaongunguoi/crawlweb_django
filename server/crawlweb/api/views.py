@@ -17,7 +17,13 @@ from rest_framework.response import Response
 from rest_framework import status
 from .models import JobDetail, User, UserProfile, Company, Application, Follow
 from .serializers import JobDetailSerializer, UserSerializer, UserProfileSerializer, CompanySerializer, ApplicationSerializer, FollowSerializer
-from .job_utils import normalize_salary_bound, parse_salary_range, get_salary_sort_value
+from .job_utils import (
+    normalize_salary_bound,
+    parse_salary_range,
+    get_salary_sort_value,
+    city_matches_filter,
+    normalize_city_label,
+)
 import bcrypt
 import jwt
 import datetime
@@ -58,10 +64,8 @@ def _job_matches_filters(job: JobDetail, q: str, skill: str, city: str, source: 
     if company and not _match_text(job.company_name or '', company):
         return False
 
-    if city:
-        province = (job.province or '').lower()
-        if city not in province:
-            return False
+    if city and not city_matches_filter(job.province, city):
+        return False
 
     if skill:
         skill_list = [s.lower() for s in (job.skills or []) if isinstance(s, str)]
@@ -187,7 +191,9 @@ def job_filters(request):
                 skills_set.add(skill.strip())
 
         if job.province and job.province.strip():
-            cities_set.add(job.province.strip())
+            normalized_city = normalize_city_label(job.province, fallback="Khác")
+            if normalized_city:
+                cities_set.add(normalized_city)
 
         if job.source and job.source.strip():
             sources_set.add(job.source.strip())
