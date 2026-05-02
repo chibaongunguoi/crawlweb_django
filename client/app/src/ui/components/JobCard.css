@@ -70,6 +70,40 @@
   margin-bottom: 8px;
 }
 
+.deadline-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  margin-bottom: 8px;
+}
+
+.deadline-chip.active {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #86efac;
+}
+
+.deadline-chip.expired {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+.deadline-chip.unknown {
+  background: #e5e7eb;
+  color: #374151;
+  border-color: #d1d5db;
+}
+
+.deadline-days {
+  font-weight: 700;
+}
+
 .job-details {
   display: flex;
   align-items: center;

@@ -3,6 +3,7 @@ from enum import Enum, auto
 import threading
 import requests
 import random
+import os
 from colorama import Fore, init
 from datetime import datetime, timezone
 import time
@@ -80,7 +81,8 @@ class ScrapeManager:
         self.aggregation_mode = aggregation_mode
 
     def scrapeSingle(self, url: str):
-        n_attempts = 5
+        n_attempts = max(1, int(os.getenv("SCRAPER_MAX_RETRIES", "5")))
+        base_delay = max(1, int(os.getenv("SCRAPER_RETRY_DELAY", "5")))
         for i in range(n_attempts):
             if i > 2:  # từ lần 3 trở lên
                 with rate_lock:
@@ -116,7 +118,8 @@ class ScrapeManager:
                 )
             if i == n_attempts - 1:
                 break
-            time.sleep(random.uniform(5, 10))
+            delay = base_delay * (2 ** i)
+            time.sleep(delay + random.uniform(0, 1.5))
 
         print(
             Fore.RED
@@ -143,7 +146,8 @@ class ScrapeManager:
             from concurrent.futures import ThreadPoolExecutor, as_completed
 
             batch_result = []
-            with ThreadPoolExecutor(max_workers=min(len(urls), 4)) as executor:
+            max_workers = max(1, int(os.getenv("SCRAPER_CONCURRENCY", "4")))
+            with ThreadPoolExecutor(max_workers=min(len(urls), max_workers)) as executor:
                 future_to_url = {
                     executor.submit(self.scrapeSingle, url): url for url in urls
                 }
@@ -228,7 +232,8 @@ class ScrapeManager:
             from concurrent.futures import ThreadPoolExecutor, as_completed
 
             batch_result = []
-            with ThreadPoolExecutor(max_workers=min(len(urls), 4)) as executor:
+            max_workers = max(1, int(os.getenv("SCRAPER_CONCURRENCY", "4")))
+            with ThreadPoolExecutor(max_workers=min(len(urls), max_workers)) as executor:
                 future_to_url = {
                     executor.submit(self.scrapeSingle, url): url for url in urls
                 }

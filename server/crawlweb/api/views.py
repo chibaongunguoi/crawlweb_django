@@ -17,6 +17,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from .models import JobDetail, User, UserProfile, Company, Application, Follow
 from .serializers import JobDetailSerializer, UserSerializer, UserProfileSerializer, CompanySerializer, ApplicationSerializer, FollowSerializer
+from .job_utils import normalize_salary_bound, parse_salary_range, get_salary_sort_value
 import bcrypt
 import jwt
 import datetime
@@ -25,14 +26,189 @@ import os
 from django.conf import settings
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
+from django.utils import timezone
 from bson import ObjectId
 
 logger = logging.getLogger(__name__)
 @api_view(['GET'])
 def getJobDetail(request):
+    job_url = request.query_params.get('url')
+    if job_url:
+        job = JobDetail.objects.filter(url=job_url).first()
+        if not job:
+            return Response({'data': []}, status=status.HTTP_200_OK)
+        serializer = JobDetailSerializer([job], many=True)
+        return Response({'data': serializer.data}, status=status.HTTP_200_OK)
+
     jobs = JobDetail.objects.all()
     serializer = JobDetailSerializer(jobs, many=True)
     return Response({'data': serializer.data}, status=status.HTTP_200_OK)
+
+
+def _match_text(value: str, needle: str) -> bool:
+    if not value or not needle:
+        return False
+    return needle in value.lower()
+
+
+def _job_matches_filters(job: JobDetail, q: str, skill: str, city: str, source: str, company: str) -> bool:
+    if source and (job.source or '').lower() != source:
+        return False
+
+    if company and not _match_text(job.company_name or '', company):
+        return False
+
+    if city:
+        province = (job.province or '').lower()
+        if city not in province:
+            return False
+
+    if skill:
+        skill_list = [s.lower() for s in (job.skills or []) if isinstance(s, str)]
+        if skill not in skill_list:
+            return False
+
+    if q:
+        haystacks = [
+            job.job_title or '',
+            job.company_name or '',
+            job.province or '',
+            job.salary or '',
+        ]
+        if any(_match_text(value, q) for value in haystacks):
+            return True
+
+        for skill_value in job.skills or []:
+            if isinstance(skill_value, str) and _match_text(skill_value, q):
+                return True
+
+        return False
+
+    return True
+
+
+@api_view(['GET'])
+def list_jobs(request):
+    """List jobs with filters and pagination."""
+    q = (request.query_params.get('q') or '').strip().lower()
+    skill = (request.query_params.get('skill') or '').strip().lower()
+    city = (request.query_params.get('city') or '').strip().lower()
+    source = (request.query_params.get('source') or '').strip().lower()
+    company = (request.query_params.get('company') or '').strip().lower()
+    status_filter = (request.query_params.get('status') or 'all').strip().lower()
+    sort = (request.query_params.get('sort') or 'newest').strip().lower()
+
+    try:
+        page = max(1, int(request.query_params.get('page', 1)))
+    except ValueError:
+        page = 1
+
+    try:
+        page_size = max(1, min(200, int(request.query_params.get('pageSize', 24))))
+    except ValueError:
+        page_size = 24
+
+    salary_min = normalize_salary_bound(request.query_params.get('salaryMin'))
+    salary_max = normalize_salary_bound(request.query_params.get('salaryMax'))
+
+    jobs = JobDetail.objects.all()
+
+    if status_filter == 'active':
+        jobs = jobs.filter(deadline__gte=timezone.localdate())
+    elif status_filter == 'expired':
+        jobs = jobs.filter(deadline__lt=timezone.localdate())
+    elif status_filter == 'unknown':
+        jobs = jobs.filter(deadline__isnull=True)
+
+    filtered_jobs = [
+        job for job in jobs
+        if _job_matches_filters(job, q, skill, city, source, company)
+    ]
+
+    if salary_min is not None or salary_max is not None:
+        salary_filtered = []
+        for job in filtered_jobs:
+            min_value, max_value = parse_salary_range(job.salary)
+            if min_value is None and max_value is None:
+                continue
+
+            if salary_min is not None and max_value is not None and max_value < salary_min:
+                continue
+
+            if salary_max is not None and min_value is not None and min_value > salary_max:
+                continue
+
+            salary_filtered.append(job)
+
+        filtered_jobs = salary_filtered
+
+    min_timestamp = datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
+
+    if sort == 'oldest':
+        filtered_jobs.sort(key=lambda job: job.collected_at or min_timestamp)
+    elif sort == 'deadline_asc':
+        filtered_jobs.sort(key=lambda job: (job.deadline is None, job.deadline))
+    elif sort == 'deadline_desc':
+        filtered_jobs.sort(key=lambda job: (job.deadline is None, job.deadline), reverse=True)
+    elif sort == 'salary_asc':
+        filtered_jobs.sort(key=lambda job: get_salary_sort_value(job.salary, 'asc'))
+    elif sort == 'salary_desc':
+        filtered_jobs.sort(key=lambda job: get_salary_sort_value(job.salary, 'desc'), reverse=True)
+    else:
+        filtered_jobs.sort(key=lambda job: job.collected_at or min_timestamp, reverse=True)
+
+    total = len(filtered_jobs)
+    total_pages = int((total + page_size - 1) / page_size) if total else 0
+
+    start_index = (page - 1) * page_size
+    end_index = start_index + page_size
+    items = filtered_jobs[start_index:end_index]
+
+    serializer = JobDetailSerializer(items, many=True)
+    return Response({
+        'items': serializer.data,
+        'page': page,
+        'pageSize': page_size,
+        'total': total,
+        'totalPages': total_pages,
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+def job_filters(request):
+    """Return unique skills, cities, and sources for search filters."""
+    skills_set = set()
+    cities_set = set()
+    sources_set = set()
+
+    for job in JobDetail.objects.all():
+        for skill in job.skills or []:
+            if isinstance(skill, str) and skill.strip():
+                skills_set.add(skill.strip())
+
+        if job.province and job.province.strip():
+            cities_set.add(job.province.strip())
+
+        if job.source and job.source.strip():
+            sources_set.add(job.source.strip())
+
+    return Response({
+        'skills': sorted(skills_set),
+        'cities': sorted(cities_set),
+        'sources': sorted(sources_set),
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+def job_detail(request, job_id):
+    """Get job detail by ID."""
+    try:
+        job = JobDetail.objects.get(pk=job_id)
+    except JobDetail.DoesNotExist:
+        return Response({'error': 'Job not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    serializer = JobDetailSerializer(job)
+    return Response({'item': serializer.data}, status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])

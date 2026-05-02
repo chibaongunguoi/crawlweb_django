@@ -2,19 +2,19 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from .models import ScrapeJob, JobDetail
+from .job_utils import parse_deadline_value, extract_deadline_from_job_info
+from .scrape_queue import get_scrape_queue, compute_next_run
+from .models import ScrapeSchedule
 from datetime import datetime
 from django.utils import timezone
 import logging
-import requests
 import os
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
-# Scraper service config
-SCRAPER_HOST = os.getenv('SCRAPER_HOST', 'localhost')
-SCRAPER_PORT = os.getenv('SCRAPER_PORT', '37001')
-SCRAPER_URL = f'http://{SCRAPER_HOST}:{SCRAPER_PORT}/api/scrape'
+SCRAPE_MAX_RETRIES = int(os.getenv('SCRAPE_MAX_RETRIES', '3'))
+SCRAPE_RETRY_DELAY = int(os.getenv('SCRAPE_RETRY_DELAY', '30'))
 
 
 # Normalize known hostnames to stable source names.
@@ -125,47 +125,30 @@ def scrape_upload(request):
         # Create scrape job
         scrape_job = ScrapeJob.objects.create(
             urls=valid_urls,
-            status='processing',
+            status='queued',
             totalUrls=len(valid_urls),
             processedUrls=0,
-            progress=0
+            progress=0,
+            retryCount=0,
+            maxRetries=SCRAPE_MAX_RETRIES,
+            retryDelay=SCRAPE_RETRY_DELAY,
         )
         
         job_id = scrape_job.pk
         logger.info(f"Created scrape job with ID: {job_id}")
         
-        # Get current host for callback
         host = request.get_host()
         protocol = 'https' if request.is_secure() else 'http'
         base_url = f'{protocol}://{host}'
-        
-        # Call scraper service asynchronously
-        try:
-            scraper_data = {
-                'urls': valid_urls,
-                'callback_url': f'{base_url}/api/scrape/result/',
-                'progress_callback_url': f'{base_url}/api/scrape/progress/',
-                'metadata': {
-                    'jobId': job_id,
-                    'start_at': datetime.now().timestamp()
-                }
-            }
-            
-            logger.info(f"Calling scraper at {SCRAPER_URL}")
-            logger.info(f"Scraper data: {scraper_data}")
-            
-            # Fire and forget - don't wait for response
-            requests.post(
-                SCRAPER_URL,
-                json=scraper_data,
-                timeout=5
-            )
-        except Exception as e:
-            logger.error(f"Error calling scraper: {str(e)}")
-            scrape_job.status = 'failed'
-            scrape_job.errorMessage = f'Failed to start scraper service: {str(e)}'
-            scrape_job.completedAt = timezone.now()
-            scrape_job.save()
+        scrape_job.metadata = {
+            **(scrape_job.metadata or {}),
+            'callbackBaseUrl': base_url,
+        }
+        scrape_job.save(update_fields=['metadata'])
+
+        queue = get_scrape_queue()
+        queue.start()
+        queue.enqueue(str(job_id))
         
         return Response({
             'jobId': job_id
@@ -204,6 +187,8 @@ def scrape_progress(request):
         scrape_job.processedUrls = int(processed or 0)
         scrape_job.currentUrl = current_url or ''
         scrape_job.progress = int(progress or 0)
+        if scrape_job.status in {'queued', 'retrying', 'pending'}:
+            scrape_job.status = 'processing'
         scrape_job.save()
         
         logger.info(f"Updated progress for job {job_id}: {scrape_job.progress}%")
@@ -248,6 +233,8 @@ def scrape_result(request):
             scrape_job.jobCount = len(job_urls)
             scrape_job.processedUrls = scrape_job.totalUrls
             scrape_job.progress = 100
+            scrape_job.lastError = None
+            scrape_job.nextRetryAt = None
             
             # Save each job to JobDetail collection
             saved_count = 0
@@ -257,6 +244,11 @@ def scrape_result(request):
                     url = job_data.get('url')
                     if not url:
                         continue
+
+                    raw_deadline = job_data.get('deadline')
+                    if not raw_deadline:
+                        raw_deadline = extract_deadline_from_job_info(job_data.get('job_info'))
+                    deadline_value = parse_deadline_value(raw_deadline)
                         
                     # Create or update JobDetail
                     job_detail, created = JobDetail.objects.update_or_create(
@@ -269,6 +261,7 @@ def scrape_result(request):
                             'company_name': job_data.get('company_name'),
                             'province': job_data.get('province', ''),
                             'salary': job_data.get('salary'),
+                            'deadline': deadline_value,
                             'skills': job_data.get('skills', []),
                             'descriptions': job_data.get('descriptions'),
                             'job_info': job_data.get('job_info'),
@@ -284,9 +277,13 @@ def scrape_result(request):
             
             logger.info(f"Job {job_id} completed with {len(job_urls)} jobs, saved {saved_count} to database")
         else:
-            scrape_job.status = 'failed'
-            scrape_job.errorMessage = data.get('message', 'Unknown error')
-            logger.error(f"Job {job_id} failed: {scrape_job.errorMessage}")
+            error_message = data.get('message', 'Unknown error')
+            logger.error(f"Job {job_id} failed: {error_message}")
+            scrape_job.metadata = data.get('metadata', {})
+            scrape_job.save(update_fields=['metadata'])
+            queue = get_scrape_queue()
+            queue.schedule_retry(scrape_job, error_message)
+            return Response({'success': True}, status=status.HTTP_200_OK)
         
         scrape_job.completedAt = timezone.now()
         scrape_job.metadata = data.get('metadata', {})
@@ -323,6 +320,12 @@ def scrape_status(request, job_id):
             'jobCount': scrape_job.jobCount,
             'currentUrl': scrape_job.currentUrl,
             'errorMessage': scrape_job.errorMessage,
+            'lastError': scrape_job.lastError,
+            'retryCount': scrape_job.retryCount,
+            'maxRetries': scrape_job.maxRetries,
+            'retryDelay': scrape_job.retryDelay,
+            'nextRetryAt': scrape_job.nextRetryAt.isoformat() if scrape_job.nextRetryAt else None,
+            'lastAttemptAt': scrape_job.lastAttemptAt.isoformat() if scrape_job.lastAttemptAt else None,
             'createdAt': scrape_job.createdAt.isoformat() if scrape_job.createdAt else None,
             'completedAt': scrape_job.completedAt.isoformat() if scrape_job.completedAt else None,
         }
@@ -355,8 +358,15 @@ def scrape_jobs(request):
                 'progress': job.progress,
                 'jobCount': job.jobCount,
                 'errorMessage': job.errorMessage,
+                'lastError': job.lastError,
+                'retryCount': job.retryCount,
+                'maxRetries': job.maxRetries,
+                'retryDelay': job.retryDelay,
+                'nextRetryAt': job.nextRetryAt.isoformat() if job.nextRetryAt else None,
+                'lastAttemptAt': job.lastAttemptAt.isoformat() if job.lastAttemptAt else None,
                 'createdAt': job.createdAt.isoformat() if job.createdAt else None,
                 'completedAt': job.completedAt.isoformat() if job.completedAt else None,
+                'urls': job.urls,
             })
         
         return Response({
@@ -396,3 +406,152 @@ def scrape_delete_job(request, job_id):
             {'error': str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@api_view(['POST'])
+def scrape_retry_job(request, job_id):
+    """Manually retry a scrape job."""
+    try:
+        try:
+            scrape_job = ScrapeJob.objects.get(pk=job_id)
+        except ScrapeJob.DoesNotExist:
+            return Response(
+                {'error': 'Job not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        scrape_job.status = 'queued'
+        scrape_job.retryCount = 0
+        scrape_job.errorMessage = None
+        scrape_job.lastError = None
+        scrape_job.nextRetryAt = None
+        scrape_job.completedAt = None
+        scrape_job.save(update_fields=[
+            'status',
+            'retryCount',
+            'errorMessage',
+            'lastError',
+            'nextRetryAt',
+            'completedAt',
+        ])
+
+        queue = get_scrape_queue()
+        queue.start()
+        queue.enqueue(str(scrape_job.pk))
+
+        return Response({'success': True}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error retrying job: {str(e)}", exc_info=True)
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET', 'POST'])
+def scrape_schedules(request):
+    """List or create scrape schedules."""
+    if request.method == 'GET':
+        schedules = ScrapeSchedule.objects.all().order_by('-createdAt')
+        data = []
+        for schedule in schedules:
+            data.append({
+                'id': str(schedule.pk),
+                'name': schedule.name,
+                'urls': schedule.urls,
+                'scheduleType': schedule.scheduleType,
+                'dayOfWeek': schedule.dayOfWeek,
+                'timeOfDay': schedule.timeOfDay,
+                'cronExpression': schedule.cronExpression,
+                'active': schedule.active,
+                'lastRunAt': schedule.lastRunAt.isoformat() if schedule.lastRunAt else None,
+                'nextRunAt': schedule.nextRunAt.isoformat() if schedule.nextRunAt else None,
+                'createdAt': schedule.createdAt.isoformat() if schedule.createdAt else None,
+                'updatedAt': schedule.updatedAt.isoformat() if schedule.updatedAt else None,
+            })
+
+        return Response({'schedules': data}, status=status.HTTP_200_OK)
+
+    try:
+        payload = request.data or {}
+        urls = payload.get('urls') or []
+        if not isinstance(urls, list) or not urls:
+            return Response({'error': 'URLs must be a non-empty array'}, status=status.HTTP_400_BAD_REQUEST)
+
+        schedule_type = (payload.get('scheduleType') or 'weekly').strip().lower()
+        if schedule_type not in {'daily', 'weekly', 'cron'}:
+            schedule_type = 'weekly'
+
+        schedule = ScrapeSchedule.objects.create(
+            name=payload.get('name'),
+            urls=urls,
+            scheduleType=schedule_type,
+            dayOfWeek=payload.get('dayOfWeek'),
+            timeOfDay=payload.get('timeOfDay') or '09:00',
+            cronExpression=payload.get('cronExpression'),
+            active=bool(payload.get('active', True)),
+        )
+
+        schedule.nextRunAt = compute_next_run(schedule)
+        if schedule_type == 'cron' and schedule.nextRunAt is None:
+            schedule.delete()
+            return Response({'error': 'Cron expression invalid or croniter missing'}, status=status.HTTP_400_BAD_REQUEST)
+
+        schedule.save(update_fields=['nextRunAt'])
+
+        return Response({'id': str(schedule.pk)}, status=status.HTTP_201_CREATED)
+    except Exception as e:
+        logger.error(f"Error creating schedule: {str(e)}", exc_info=True)
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['PUT', 'DELETE'])
+def scrape_schedule_detail(request, schedule_id):
+    """Update or delete a scrape schedule."""
+    try:
+        schedule = ScrapeSchedule.objects.get(pk=schedule_id)
+    except ScrapeSchedule.DoesNotExist:
+        return Response({'error': 'Schedule not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'DELETE':
+        schedule.delete()
+        return Response({'success': True}, status=status.HTTP_200_OK)
+
+    payload = request.data or {}
+    if 'name' in payload:
+        schedule.name = payload.get('name')
+    if 'urls' in payload:
+        schedule.urls = payload.get('urls') or []
+    if 'scheduleType' in payload:
+        schedule.scheduleType = payload.get('scheduleType')
+    if 'dayOfWeek' in payload:
+        schedule.dayOfWeek = payload.get('dayOfWeek')
+    if 'timeOfDay' in payload:
+        schedule.timeOfDay = payload.get('timeOfDay') or schedule.timeOfDay
+    if 'cronExpression' in payload:
+        schedule.cronExpression = payload.get('cronExpression')
+    if 'active' in payload:
+        schedule.active = bool(payload.get('active'))
+
+    schedule.nextRunAt = compute_next_run(schedule)
+    if schedule.scheduleType == 'cron' and schedule.nextRunAt is None:
+        return Response({'error': 'Cron expression invalid or croniter missing'}, status=status.HTTP_400_BAD_REQUEST)
+
+    schedule.save()
+
+    return Response({'success': True}, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+def scrape_schedule_toggle(request, schedule_id):
+    """Toggle schedule active status."""
+    try:
+        schedule = ScrapeSchedule.objects.get(pk=schedule_id)
+    except ScrapeSchedule.DoesNotExist:
+        return Response({'error': 'Schedule not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    schedule.active = not schedule.active
+    schedule.nextRunAt = compute_next_run(schedule) if schedule.active else None
+    schedule.save(update_fields=['active', 'nextRunAt'])
+
+    return Response({'success': True, 'active': schedule.active}, status=status.HTTP_200_OK)

@@ -24,7 +24,7 @@ export default function JobSearch() {
 
   const fetchSkillsAndCities = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/jobs/', {
+      const response = await fetch('http://localhost:8000/api/jobs/filters/', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -32,39 +32,21 @@ export default function JobSearch() {
       });
       
       if (response.ok) {
-        const jobsResponse = await response.json();
-        const jobs = jobsResponse.data || jobsResponse || [];
-        
-        // Extract unique skills
-        const allSkills = new Set();
-        jobs.forEach(job => {
-          if (job.skills && Array.isArray(job.skills)) {
-            job.skills.forEach(skill => {
-              if (skill && skill.trim()) {
-                allSkills.add(skill.trim());
-              }
-            });
-          }
-        });
-        
-        // Extract unique cities with normalization
+        const data = await response.json();
+        const skillsList = (data.skills || []).map((skill) => skill.trim()).filter(Boolean);
         const cityMap = new Map();
-        jobs.forEach(job => {
-          if (job.province && job.province.trim()) {
-            const normalizedCity = normalizeCity(job.province.trim());
-            if (!cityMap.has(normalizedCity.toLowerCase())) {
-              cityMap.set(normalizedCity.toLowerCase(), normalizedCity);
-            }
+
+        (data.cities || []).forEach((city) => {
+          if (!city || !city.trim()) {
+            return;
           }
-          if (job.location && job.location.trim()) {
-            const normalizedCity = normalizeCity(job.location.trim());
-            if (!cityMap.has(normalizedCity.toLowerCase())) {
-              cityMap.set(normalizedCity.toLowerCase(), normalizedCity);
-            }
+          const normalizedCity = normalizeCity(city.trim());
+          if (!cityMap.has(normalizedCity.toLowerCase())) {
+            cityMap.set(normalizedCity.toLowerCase(), normalizedCity);
           }
         });
-        
-        setSkills(Array.from(allSkills).sort());
+
+        setSkills(skillsList.sort());
         setCities(Array.from(cityMap.values()).sort());
       }
     } catch (error) {

@@ -4,4 +4,6 @@ bcrypt
 PyJWT
 requests
 pymongo
+# Scheduler (cron parsing)
+croniter
 # react-router-dom

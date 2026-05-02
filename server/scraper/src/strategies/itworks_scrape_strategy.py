@@ -4,7 +4,7 @@ from urllib.parse import urljoin
 
 from .strategy import ScrapeStrategy
 from ..model.job_detail import JobDetail
-from ..util import removeConsecutiveSpaces
+from ..util import removeConsecutiveSpaces, extract_deadline_from_job_info
 
 
 class ItworksScrapeStrategy(ScrapeStrategy):
@@ -167,6 +167,7 @@ class ItworksScrapeStrategy(ScrapeStrategy):
         skills = self._extract_skills(page)
         descriptions = self._extract_descriptions(page)
         job_info = self._extract_job_info(page)
+        deadline = extract_deadline_from_job_info(job_info)
 
         job = JobDetail(
             url=url,
@@ -179,6 +180,7 @@ class ItworksScrapeStrategy(ScrapeStrategy):
             company_name=company_name,
             company_url=company_url,
             salary=salary,
+            deadline=deadline,
         )
 
         return job.__dict__
