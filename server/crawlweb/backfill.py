@@ -10,6 +10,8 @@ from api.job_utils import (
     parse_deadline_value,
     extract_deadline_from_job_info,
     normalize_job_info_dates,
+    strip_redundant_deadline_info,
+    job_info_has_expiration,
 )
 
 
@@ -144,17 +146,19 @@ def _normalize_deadlines():
 
         job_info = job.job_info
         normalized_job_info = normalize_job_info_dates(job_info)
+        normalized_job_info = strip_redundant_deadline_info(normalized_job_info)
         if normalized_job_info is not None and normalized_job_info != job_info:
             job.job_info = normalized_job_info
             update_fields.append("job_info")
             updated_job_info += 1
 
-        deadline_value = parse_deadline_value(job.deadline) if job.deadline else None
-        if not deadline_value:
+        if job_info_has_expiration(normalized_job_info or job_info):
             raw_deadline = extract_deadline_from_job_info(normalized_job_info or job_info)
             deadline_value = parse_deadline_value(raw_deadline)
+        else:
+            deadline_value = None
 
-        if deadline_value and deadline_value != job.deadline:
+        if deadline_value != job.deadline:
             job.deadline = deadline_value
             update_fields.append("deadline")
             updated_deadline += 1

@@ -104,6 +104,53 @@ def _matches_location(text: str, condensed: str, words: tuple[str, ...], condens
     return any(token in text for token in words) or any(token in condensed for token in condensed_words)
 
 
+_DEADLINE_KEY_MARKERS = ("deadline", "han nop", "ngay nop")
+_EXPIRATION_KEY_MARKERS = (
+    "expiration",
+    "expiry",
+    "expire",
+    "expired",
+    "ngay het han",
+    "ngay het",
+)
+
+
+def _normalize_info_key(value: str) -> str:
+    normalized = _strip_accents(str(value)).lower()
+    normalized = re.sub(r"[^a-z0-9 ]+", " ", normalized)
+    return " ".join(normalized.split())
+
+
+def job_info_has_expiration(job_info: Optional[dict]) -> bool:
+    if not isinstance(job_info, dict) or not job_info:
+        return False
+
+    for key in job_info.keys():
+        if not key:
+            continue
+        normalized = _normalize_info_key(key)
+        if any(marker in normalized for marker in _EXPIRATION_KEY_MARKERS):
+            return True
+
+    return False
+
+
+def strip_redundant_deadline_info(job_info: Optional[dict]) -> Optional[dict]:
+    if not isinstance(job_info, dict) or not job_info:
+        return job_info
+
+    cleaned = {}
+    for key, value in job_info.items():
+        normalized = _normalize_info_key(key)
+        has_deadline = any(marker in normalized for marker in _DEADLINE_KEY_MARKERS)
+        has_expire = any(marker in normalized for marker in _EXPIRATION_KEY_MARKERS)
+        if has_deadline and not has_expire:
+            continue
+        cleaned[key] = value
+
+    return cleaned
+
+
 def normalize_city_label(value: Optional[str], fallback: Optional[str] = None) -> str:
     if value is None:
         return "" if fallback is None else fallback
@@ -163,7 +210,6 @@ def parse_deadline_value(raw: Optional[object]) -> Optional[date]:
     if not text:
         return None
 
-    # Normalize Vietnamese labels like "Han nop:" for easier matching.
     clean_text = _strip_accents(text).lower()
     clean_text = clean_text.replace("han nop", "").replace("deadline", "")
 
@@ -203,6 +249,7 @@ def normalize_job_info_dates(job_info: Optional[dict], output_format: Optional[s
         "ngay nop",
         "ngay het han",
         "ngay het",
+        "expiration",
         "ngay dang",
         "ngay cap nhat",
         "posted",
@@ -235,25 +282,30 @@ def extract_deadline_from_job_info(job_info: Optional[dict]) -> Optional[str]:
     if not isinstance(job_info, dict):
         return None
 
-    deadline_keys = (
-        "deadline",
-        "han nop",
-        "ngay nop",
-        "ngay het han",
-        "ngay het",
-        "expiry",
-        "expire",
-        "expired",
-    )
+    if not job_info_has_expiration(job_info):
+        return None
+
+    best_value = None
+    best_date = None
 
     for key, value in job_info.items():
         if not key or not value:
             continue
-        normalized = _strip_accents(str(key)).lower()
-        if any(marker in normalized for marker in deadline_keys):
-            return str(value)
+        normalized = _normalize_info_key(key)
+        if not any(marker in normalized for marker in _EXPIRATION_KEY_MARKERS):
+            continue
 
-    return None
+        parsed = parse_deadline_value(value)
+        if parsed is None:
+            if best_value is None:
+                best_value = value
+            continue
+
+        if best_date is None or parsed > best_date:
+            best_value = value
+            best_date = parsed
+
+    return str(best_value) if best_value is not None else None
 
 
 def compute_deadline_status(deadline: Optional[date]) -> Tuple[Optional[bool], Optional[int]]:

@@ -24,22 +24,22 @@ def extract_deadline_from_job_info(job_info: dict) -> str | None:
     if not isinstance(job_info, dict):
         return None
 
-    deadline_keys = (
-        "deadline",
-        "han nop",
-        "ngay nop",
-        "ngay het han",
-        "ngay het",
+    expiration_keys = (
+        "expiration",
         "expiry",
         "expire",
         "expired",
+        "ngay het han",
+        "ngay het",
     )
 
+    best_value = None
     for key, value in job_info.items():
         if not key or not value:
             continue
         normalized = _strip_accents(str(key)).lower()
-        if any(marker in normalized for marker in deadline_keys):
-            return str(value)
+        if any(marker in normalized for marker in expiration_keys):
+            if best_value is None:
+                best_value = value
 
-    return None
+    return str(best_value) if best_value is not None else None

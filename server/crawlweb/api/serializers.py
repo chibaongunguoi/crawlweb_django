@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import JobDetail, User, UserProfile, Company, Application, Follow, Notification
-from .job_utils import compute_deadline_status
+from .job_utils import compute_deadline_status, strip_redundant_deadline_info
 import json
 
 
@@ -28,6 +28,7 @@ class JobDetailSerializer(serializers.ModelSerializer):
             data['_id'] = str(data['id'])
         else:
             data['_id'] = str(instance.pk)
+        data['job_info'] = strip_redundant_deadline_info(data.get('job_info'))
         return data
     
     def get_skills(self, obj):
