@@ -209,10 +209,27 @@ print(JobDetail.objects.count())
 " 2>/dev/null || echo "0")
 
 if [[ "${JOB_COUNT}" == "0" ]]; then
-    log "Database is empty, loading test data..."
-    if [[ -f "load_test_data.py" ]]; then
-        python manage.py shell < load_test_data.py 2>/dev/null || warn "Failed to load test data."
+    SEED_DIR="${PROJECT_DIR}/database/seed/${MONGO_DB}"
+
+    SEED_RESTORED=false
+
+    if command -v mongorestore &>/dev/null && [[ -d "${SEED_DIR}" ]]; then
+        log "Database is empty, restoring seed data from ${SEED_DIR}..."
+        if mongorestore --uri="mongodb://localhost:27017/${MONGO_DB}" --db "${MONGO_DB}" --drop "${SEED_DIR}"; then
+            log "Seed restore completed."
+            SEED_RESTORED=true
+        else
+            warn "Seed restore failed."
+        fi
     else
+        warn "Seed data not found or mongorestore missing."
+    fi
+
+    # Fallback: load Django test data if seed restore did not run or failed.
+    if [[ "${SEED_RESTORED}" != "true" && -f "load_test_data.py" ]]; then
+        log "Loading test data via Django shell..."
+        python manage.py shell < load_test_data.py 2>/dev/null || warn "Failed to load test data."
+    elif [[ "${SEED_RESTORED}" != "true" ]]; then
         warn "No load_test_data.py found. Database is empty."
     fi
 fi
