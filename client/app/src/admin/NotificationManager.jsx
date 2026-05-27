@@ -28,7 +28,7 @@ export default function NotificationManager() {
   const fetchNotifications = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:8000/api/admin/notifications/', {
+      const response = await fetch('/api/admin/notifications/', {
         credentials: 'include'
       });
 
@@ -53,7 +53,7 @@ export default function NotificationManager() {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/admin/notifications/${notificationId}/`, {
+      const response = await fetch(`/api/admin/notifications/${notificationId}/`, {
         method: 'DELETE',
         credentials: 'include'
       });

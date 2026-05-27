@@ -38,7 +38,7 @@ export default function UserProfile() {
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/auth/user/', {
+        const response = await fetch('/api/auth/user/', {
           method: 'GET',
           credentials: 'include',
         });
@@ -81,7 +81,7 @@ export default function UserProfile() {
     try {
       setProfileLoading(true);
       console.log('fetchUserProfile: fetching for user', user.username);
-      const res = await fetch('http://localhost:8000/api/user/profile/', {
+      const res = await fetch('/api/user/profile/', {
         method: 'GET',
         credentials: 'include'
       });
@@ -108,7 +108,7 @@ export default function UserProfile() {
     if (!user?.username) return;
     try {
       setProfileLoading(true);
-      const res = await fetch(`http://localhost:8000/api/admin/companies/?username=${encodeURIComponent(user.username)}`, {
+      const res = await fetch(`/api/admin/companies/?username=${encodeURIComponent(user.username)}`, {
         method: 'GET',
         credentials: 'include'
       });
@@ -205,7 +205,7 @@ export default function UserProfile() {
       const formData = new FormData();
       formData.append('cv', file);
 
-      const res = await fetch('http://localhost:8000/api/user/profile/upload-cv/', {
+      const res = await fetch('/api/user/profile/upload-cv/', {
         method: 'POST',
         credentials: 'include',
         body: formData
@@ -261,7 +261,7 @@ export default function UserProfile() {
       
       console.log('Saving profile with data:', cleanedData);
       
-      const response = await fetch('http://localhost:8000/api/user/profile/', {
+      const response = await fetch('/api/user/profile/', {
         method: method,
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -297,7 +297,7 @@ export default function UserProfile() {
     if (favoritesLoading) return;
     try {
       setFavoritesLoading(true);
-      const response = await fetch('http://localhost:8000/api/user/favorites/', {
+      const response = await fetch('/api/user/favorites/', {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include'
@@ -320,7 +320,7 @@ export default function UserProfile() {
     if (applicationsLoading) return;
     try {
       setApplicationsLoading(true);
-      const response = await fetch('http://localhost:8000/api/user/apply/', {
+      const response = await fetch('/api/user/apply/', {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include'
@@ -344,7 +344,7 @@ export default function UserProfile() {
       return;
     }
     try {
-      const response = await fetch(`http://localhost:8000/api/user/apply/${applicationId}/`, {
+      const response = await fetch(`/api/user/apply/${applicationId}/`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include'
@@ -401,7 +401,7 @@ export default function UserProfile() {
 
     try {
       setPasswordLoading(true);
-      const response = await fetch('http://localhost:8000/api/user/change-password/', {
+      const response = await fetch('/api/user/change-password/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -429,7 +429,7 @@ export default function UserProfile() {
 
   // Logout
   async function logOut() {
-    await fetch("http://localhost:8000/api/auth/logout/", {
+    await fetch("/api/auth/logout/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: 'include'

@@ -23,8 +23,8 @@ export default function JobDetail() {
     try {
       setIsFollowLoading(true);
       const endpoint = isFollowed
-        ? `http://localhost:8000/api/user/favorites/${jobId}/`
-        : "http://localhost:8000/api/user/favorites/";
+        ? `/api/user/favorites/${jobId}/`
+        : "/api/user/favorites/";
       const method = isFollowed ? "DELETE" : "POST";
       const requestOptions = {
         method,
@@ -76,7 +76,7 @@ export default function JobDetail() {
   // Lấy trạng thái follow hiện tại
   const fetchFollowStatus = async (jobId) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/user/favorites/?job_id=${jobId}`, {
+      const response = await fetch(`/api/user/favorites/?job_id=${jobId}`, {
         method: "GET",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -96,7 +96,7 @@ export default function JobDetail() {
   // Lấy số lượt follow
   const fetchFollowCount = async (jobId) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/jobs/-count/?jobId=${jobId}`, {
+      const response = await fetch(`/api/jobs/-count/?jobId=${jobId}`, {
         method: "GET",
         headers: { "Content-Type": "application/json" },
       });
@@ -113,7 +113,7 @@ export default function JobDetail() {
   // Check if company exists in Company model
   const checkCompanyExists = async (companyName) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/admin/companies/?name=${encodeURIComponent(companyName)}`, {
+      const response = await fetch(`/api/admin/companies/?name=${encodeURIComponent(companyName)}`, {
         method: "GET",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -142,7 +142,7 @@ export default function JobDetail() {
       setIsApplyLoading(true);
       
       // Check if user has UserProfile first
-      const profileResponse = await fetch('http://localhost:8000/api/user/profile/', {
+      const profileResponse = await fetch('/api/user/profile/', {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -168,7 +168,7 @@ export default function JobDetail() {
       }
 
       // Proceed with application
-      const response = await fetch("http://localhost:8000/api/user/apply/", {
+      const response = await fetch("/api/user/apply/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -227,7 +227,7 @@ export default function JobDetail() {
   const fetchJobDetail = async (id) => {
     try {
       setLoading(true);
-      const response = await fetch("http://localhost:8000/api/jobDetail/", {
+      const response = await fetch("/api/jobDetail/", {
         method: "GET",
         headers: {
           "Content-Type": "application/json",

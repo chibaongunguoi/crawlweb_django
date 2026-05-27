@@ -27,8 +27,8 @@ export default function FollowApplyChart({ filters, onDrilldown }) {
         const query = toQuery({ top: filters?.top || 10 });
 
         const [followRes, applyRes] = await Promise.all([
-          fetch(`http://localhost:8000/api/admin/stats/follow-counts/?${query}`, { credentials: "include" }),
-          fetch(`http://localhost:8000/api/admin/stats/application-counts/?${query}`, { credentials: "include" }),
+          fetch(`/api/admin/stats/follow-counts/?${query}`, { credentials: "include" }),
+          fetch(`/api/admin/stats/application-counts/?${query}`, { credentials: "include" }),
         ]);
 
         const [followData, applyData] = await Promise.all([followRes.json(), applyRes.json()]);

@@ -26,7 +26,7 @@ const ScrapeManager = () => {
   const fetchJobs = async () => {
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/scrape/jobs/', {
+      const response = await fetch('/api/scrape/jobs/', {
         credentials: 'include',
       });
       
@@ -60,7 +60,7 @@ const ScrapeManager = () => {
 
     const pollJobStatus = async () => {
       try {
-        const response = await fetch(`http://localhost:8000/api/scrape/status/${activeJobId}/`, {
+        const response = await fetch(`/api/scrape/status/${activeJobId}/`, {
           credentials: 'include',
         });
         
@@ -145,7 +145,7 @@ const ScrapeManager = () => {
     setError(null);
     
     try {
-      const response = await fetch('http://localhost:8000/api/scrape/upload/', {
+      const response = await fetch('/api/scrape/upload/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -182,7 +182,7 @@ const ScrapeManager = () => {
     }
     
     try {
-      const response = await fetch(`http://localhost:8000/api/scrape/jobs/${jobId}/`, {
+      const response = await fetch(`/api/scrape/jobs/${jobId}/`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -209,7 +209,7 @@ const ScrapeManager = () => {
 
   const handleViewDetail = async (jobUrl) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/jobs/?url=${encodeURIComponent(jobUrl)}`, {
+      const response = await fetch(`/api/jobs/?url=${encodeURIComponent(jobUrl)}`, {
         credentials: 'include',
       });
       

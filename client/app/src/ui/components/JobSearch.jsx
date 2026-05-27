@@ -24,7 +24,7 @@ export default function JobSearch() {
 
   const fetchSkillsAndCities = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/jobs/', {
+      const response = await fetch('/api/jobs/', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',

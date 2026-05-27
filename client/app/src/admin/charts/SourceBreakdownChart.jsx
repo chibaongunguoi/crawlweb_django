@@ -20,7 +20,7 @@ export default function SourceBreakdownChart({ timeRange, onDrilldown }) {
       setError("");
       try {
         const query = toQuery({ from: timeRange?.from, to: timeRange?.to });
-        const response = await fetch(`http://localhost:8000/api/admin/stats/source-breakdown/?${query}`, {
+        const response = await fetch(`/api/admin/stats/source-breakdown/?${query}`, {
           credentials: "include",
         });
         const data = await response.json();

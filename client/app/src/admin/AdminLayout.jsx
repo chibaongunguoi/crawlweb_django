@@ -14,7 +14,7 @@ export default function AdminLayout() {
 
   const checkAuth = async () => {
     try {
-      const response = await fetch("http://localhost:8000/api/auth/user/", {
+      const response = await fetch("/api/auth/user/", {
         method: "GET",
         credentials: "include",
       });
@@ -45,7 +45,7 @@ export default function AdminLayout() {
 
   const logOut = async () => {
     try {
-      await fetch("http://localhost:8000/api/auth/logout/", {
+      await fetch("/api/auth/logout/", {
         method: "POST",
         credentials: "include",
       });

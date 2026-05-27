@@ -24,7 +24,7 @@ export default function Home() {
   const fetchJobsAndFollowCounts = async () => {
     try {
       // Fetch jobs
-      const jobsResponse = await fetch("http://localhost:8000/api/jobs/");
+      const jobsResponse = await fetch("/api/jobs/");
       const jobsData = await jobsResponse.json();
       
       if (jobsResponse.ok) {
