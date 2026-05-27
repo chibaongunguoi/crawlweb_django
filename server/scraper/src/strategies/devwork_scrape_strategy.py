@@ -4,7 +4,7 @@ import re
 
 from .strategy import ScrapeStrategy
 from ..model.job_detail import JobDetail
-from ..util import removeConsecutiveSpaces
+from ..util import removeConsecutiveSpaces, extract_deadline_from_job_info
 
 
 class DevworkScrapeStrategy(ScrapeStrategy):
@@ -26,6 +26,7 @@ class DevworkScrapeStrategy(ScrapeStrategy):
         province = self.getProvince(headerDetails)
         salary = self.getSalary(page)
         job_info = self.getJobInfo(page)
+        deadline = extract_deadline_from_job_info(job_info)
         skills, descriptions = self.getDescriptions(page)
         title = self.getJobTitle(headerDetails)
 
@@ -40,6 +41,7 @@ class DevworkScrapeStrategy(ScrapeStrategy):
             company_name=company_name,
             company_url=company_url,
             salary=salary,
+            deadline=deadline,
         )
         return job.__dict__
 

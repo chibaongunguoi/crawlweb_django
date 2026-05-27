@@ -1,4 +1,4 @@
-from ..util import removeConsecutiveSpaces
+from ..util import removeConsecutiveSpaces, extract_deadline_from_job_info
 from .strategy import ScrapeStrategy
 from requests import Response
 from bs4 import BeautifulSoup
@@ -123,6 +123,7 @@ class TopCvScrapeStrategy(ScrapeStrategy):
         descriptions.update(body_info["descriptions"])
         general_info = self.scrapeGeneralInfo(page)
         job_info = general_info["job_info"]
+        deadline = extract_deadline_from_job_info(job_info)
         box_category_info = self.scrapeBoxCategory(page)
         skills = box_category_info["skills"]
         title = self.scrapeTitle(page)
@@ -140,5 +141,6 @@ class TopCvScrapeStrategy(ScrapeStrategy):
             company_name=company_name,
             company_url=company_url,
             salary=salary,
+            deadline=deadline,
         )
         return job.__dict__

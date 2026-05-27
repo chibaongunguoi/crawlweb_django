@@ -1,5 +1,5 @@
 import "./home.css";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import JobCard from "./ui/components/JobCard";
 import Carousel from "./ui/components/Carousel";
@@ -7,6 +7,9 @@ import Carousel from "./ui/components/Carousel";
 export default function Home() {
   const [currentPage, setCurrentPage] = useState(1);
   const [jobs, setJobs] = useState([]); // State để lưu dữ liệu từ API
+  const [totalJobs, setTotalJobs] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const lastSearchKeyRef = useRef("");
   // const [followCounts, setFollowCounts] = useState({}); // State để lưu số lượt yêu thích
   const navigate = useNavigate();
   const location = useLocation();
@@ -17,82 +20,36 @@ export default function Home() {
   const selectedCity = (searchParams.get("city") || "").trim().toLowerCase();
   const highlightTerms = [queryText, selectedSkill, selectedCity].filter(Boolean);
 
+  const jobsPerPage = 24;
+
   useEffect(() => {
+    const searchKey = `${queryText}|${selectedSkill}|${selectedCity}`;
+    if (lastSearchKeyRef.current !== searchKey) {
+      lastSearchKeyRef.current = searchKey;
+      if (currentPage !== 1) {
+        setCurrentPage(1);
+        return;
+      }
+    }
+
     fetchJobsAndFollowCounts();
-  }, []);
+  }, [queryText, selectedSkill, selectedCity, currentPage]);
 
   const fetchJobsAndFollowCounts = async () => {
     try {
       // Fetch jobs
       const jobsResponse = await fetch("/api/jobs/");
       const jobsData = await jobsResponse.json();
-      
+
       if (jobsResponse.ok) {
-        // Extract data array from response
-        const jobsArray = jobsData.data || jobsData || [];
-        setJobs(jobsArray);
-        
-        // if (jobsArray.length > 0) {
-        //   // Fetch follow counts for all jobs
-        //   const jobIds = jobsArray.map(job => job._id);
-        //   const followResponse = await fetch("/api/follow/count", {
-        //     method: "POST",
-        //     headers: {
-        //       "Content-Type": "application/json",
-        //     },
-        //     body: JSON.stringify({ jobIds }),
-        //   });
-          
-        //   if (followResponse.ok) {
-        //     const followData = await followResponse.json();
-        //     setFollowCounts(followData);
-        //   }
-        // }
+        setJobs(jobsData.items || []);
+        setTotalJobs(jobsData.total || 0);
+        setTotalPages(jobsData.totalPages || 0);
       }
     } catch (error) {
       console.error("Error fetching data:", error);
     }
   };
-
-  const jobsPerPage = 24;
-  const filteredJobs = jobs.filter((job) => {
-    const title = (job.job_title || "").toLowerCase();
-    const company = (job.company_name || "").toLowerCase();
-    const province = (job.province || "").toLowerCase();
-    const locationText = (job.location || "").toLowerCase();
-    const skillList = Array.isArray(job.skills)
-      ? job.skills.map((skill) => (skill || "").toLowerCase())
-      : [];
-
-    const matchesQuery =
-      !queryText ||
-      title.includes(queryText) ||
-      company.includes(queryText) ||
-      province.includes(queryText) ||
-      locationText.includes(queryText) ||
-      skillList.some((skill) => skill.includes(queryText));
-
-    const matchesSkill =
-      !selectedSkill || skillList.some((skill) => skill === selectedSkill);
-
-    const matchesCity =
-      !selectedCity ||
-      province.includes(selectedCity) ||
-      locationText.includes(selectedCity);
-
-    return matchesQuery && matchesSkill && matchesCity;
-  });
-
-  const totalPages = Math.max(1, Math.ceil(filteredJobs.length / jobsPerPage));
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [queryText, selectedSkill, selectedCity]);
-
-  // Calculate jobs for current page
-  const indexOfLastJob = currentPage * jobsPerPage;
-  const indexOfFirstJob = indexOfLastJob - jobsPerPage;
-  const currentJobs = filteredJobs.slice(indexOfFirstJob, indexOfLastJob);
 
   // Pagination handlers
   const handlePageChange = (pageNumber) => {
@@ -126,14 +83,14 @@ export default function Home() {
         <h1>Cơ hội việc làm</h1>
         {(queryText || selectedSkill || selectedCity) && (
           <p>
-            Tìm thấy <strong>{filteredJobs.length}</strong> công việc phù hợp.
+            Tìm thấy <strong>{totalJobs}</strong> công việc phù hợp.
           </p>
         )}
       </div>
 
       {/* Job Cards Grid */}
       <div className="jobs-grid">
-        {currentJobs.map((job) => (
+        {jobs.map((job) => (
           <JobCard
             key={job._id}
             job={job}
@@ -145,14 +102,14 @@ export default function Home() {
         ))}
       </div>
 
-      {filteredJobs.length === 0 && (
+      {jobs.length === 0 && (
         <div className="header-section">
           <p>Không có công việc nào khớp với điều kiện tìm kiếm.</p>
         </div>
       )}
 
       {/* Pagination */}
-      {filteredJobs.length > 0 && (
+      {jobs.length > 0 && totalPages > 1 && (
         <div className="pagination-container">
           <button
             className="pagination-button"

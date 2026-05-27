@@ -199,6 +199,25 @@ const ScrapeManager = () => {
     }
   };
 
+  const handleRetry = async (jobId) => {
+    try {
+      const response = await fetch(`http://localhost:8000/api/scrape/jobs/${jobId}/retry/`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        showToast('success', 'Đã xếp lại vào hàng đợi để retry');
+        fetchJobs();
+      } else {
+        showToast('error', 'Không thể retry job này');
+      }
+    } catch (error) {
+      console.error('Error retrying job:', error);
+      showToast('error', 'Có lỗi xảy ra');
+    }
+  };
+
   const handleViewJobUrls = (job) => {
     setViewModal({ show: true, job });
   };
@@ -234,7 +253,9 @@ const ScrapeManager = () => {
   const getStatusBadge = (status) => {
     const statusConfig = {
       pending: { label: 'Đang chờ', color: '#f59e0b' },
+      queued: { label: 'Trong hàng đợi', color: '#0ea5e9' },
       processing: { label: 'Đang xử lý', color: '#3b82f6' },
+      retrying: { label: 'Đang retry', color: '#f97316' },
       completed: { label: 'Hoàn thành', color: '#10b981' },
       failed: { label: 'Thất bại', color: '#ef4444' }
     };
@@ -406,6 +427,8 @@ const ScrapeManager = () => {
                   <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase' }}>URL</th>
                   <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase' }}>Trạng thái</th>
                   <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase' }}>Tiến độ</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase' }}>Retry</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase' }}>Lỗi gần nhất</th>
                   <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase' }}>Thời gian tạo</th>
                   <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase' }}>Hoàn thành</th>
                   <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase' }}>Thao tác</th>
@@ -457,9 +480,21 @@ const ScrapeManager = () => {
                         <div style={{ fontSize: '12px', color: '#10b981' }}>
                           {job.jobCount} công việc
                         </div>
+                      ) : job.status === 'retrying' ? (
+                        <div style={{ fontSize: '12px', color: '#f97316' }}>
+                          Retry sau {job.nextRetryAt ? formatDate(job.nextRetryAt) : '...'}
+                        </div>
                       ) : (
                         <div style={{ fontSize: '12px', color: '#6b7280' }}>-</div>
                       )}
+                    </td>
+                    <td style={{ padding: '12px 16px', fontSize: '13px', color: '#6b7280' }}>
+                      {job.retryCount || 0}/{job.maxRetries || 0}
+                    </td>
+                    <td style={{ padding: '12px 16px', fontSize: '12px', color: '#6b7280', maxWidth: '220px' }}>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={job.lastError || job.errorMessage || ''}>
+                        {job.lastError || job.errorMessage || '-'}
+                      </div>
                     </td>
                     <td style={{ padding: '12px 16px', fontSize: '14px', color: '#6b7280' }}>
                       {formatDate(job.createdAt)}
@@ -469,6 +504,26 @@ const ScrapeManager = () => {
                     </td>
                     <td style={{ padding: '12px 16px' }}>
                       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        {(job.status === 'failed' || job.status === 'retrying') && (
+                          <button
+                            onClick={() => handleRetry(job.id)}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '6px 12px',
+                              backgroundColor: '#f97316',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '6px',
+                              fontSize: '13px',
+                              fontWeight: '500',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Retry
+                          </button>
+                        )}
                         {job.status === 'completed' && job.jobCount > 0 && (
                           <button
                             onClick={() => handleViewJobUrls(job)}

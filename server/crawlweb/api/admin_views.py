@@ -9,6 +9,7 @@ from .serializers import (
 )
 from collections import Counter
 from datetime import datetime, timedelta
+from django.utils import timezone
 import logging
 import bcrypt
 
@@ -540,19 +541,23 @@ def admin_delete_notification(request, notification_id):
 def _parse_date_range(request):
     from_str = request.query_params.get('from')
     to_str = request.query_params.get('to')
+    now = timezone.now()
+
+    def make_aware(value):
+        return value if timezone.is_aware(value) else timezone.make_aware(value)
 
     try:
-        from_dt = datetime.strptime(from_str, '%Y-%m-%d') if from_str else (datetime.utcnow() - timedelta(days=30))
+        from_dt = datetime.strptime(from_str, '%Y-%m-%d') if from_str else (now - timedelta(days=30))
     except ValueError:
-        from_dt = datetime.utcnow() - timedelta(days=30)
+        from_dt = now - timedelta(days=30)
 
     try:
-        to_dt = datetime.strptime(to_str, '%Y-%m-%d') if to_str else datetime.utcnow()
+        to_dt = datetime.strptime(to_str, '%Y-%m-%d') if to_str else now
         to_dt = to_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
     except ValueError:
-        to_dt = datetime.utcnow()
+        to_dt = now
 
-    return from_dt, to_dt
+    return make_aware(from_dt), make_aware(to_dt)
 
 
 def _time_bucket(dt, interval):
@@ -648,7 +653,11 @@ def admin_follow_counts(request):
             .order_by('-count')[:top]
         )
 
-        job_ids = [item['JobDetailID'] for item in grouped if item.get('JobDetailID')]
+        job_ids = [
+            item['JobDetailID']
+            for item in grouped
+            if item.get('JobDetailID') not in (None, '', 'None')
+        ]
         jobs = JobDetail.objects.filter(pk__in=job_ids)
         jobs_map = {str(job.pk): job for job in jobs}
 
@@ -685,7 +694,11 @@ def admin_application_counts(request):
             .order_by('-count')[:top]
         )
 
-        job_ids = [item['JobDetailID'] for item in grouped if item.get('JobDetailID')]
+        job_ids = [
+            item['JobDetailID']
+            for item in grouped
+            if item.get('JobDetailID') not in (None, '', 'None')
+        ]
         jobs = JobDetail.objects.filter(pk__in=job_ids)
         jobs_map = {str(job.pk): job for job in jobs}
 
@@ -745,7 +758,7 @@ def admin_scraper_health(request):
         period = request.query_params.get('period', '7d').lower()
         period_map = {'7d': 7, '14d': 14, '30d': 30, '90d': 90}
         days = period_map.get(period, 7)
-        from_dt = datetime.utcnow() - timedelta(days=days)
+        from_dt = timezone.now() - timedelta(days=days)
 
         grouped = list(
             ScrapeJob.objects.filter(createdAt__gte=from_dt)
