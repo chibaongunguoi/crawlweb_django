@@ -7,15 +7,14 @@
 3. [Cấu hình Security Group](#3-cấu-hình-security-group)
 4. [SSH vào Server](#4-ssh-vào-server)
 5. [Chạy script Deploy](#5-chạy-script-deploy)
-6. [Cấu hình .env chi tiết](#6-cấu-hình-env-chi-tiết)
-7. [Kiểm tra Services](#7-kiểm-tra-services)
-8. [Cấu hình MongoDB](#8-cấu-hình-mongodb)
-9. [Frontend - Xử lý API URL](#9-frontend---xử-lý-api-url)
-10. [Lệnh debug thường dùng](#10-lệnh-debug-thường-dùng)
-11. [Update code khi có commit mới](#11-update-code-khi-có-commit-mới)
-12. [Rollback về commit cũ](#12-rollback-về-commit-cũ)
-13. [Các lỗi thường gặp](#13-các-lỗi-thường-gặp)
-14. [Bật HTTPS (tương lai)](#14-bật-https-tương-lai)
+6. [Kiểm tra Services](#6-kiểm-tra-services)
+7. [Cấu hình MongoDB](#7-cấu-hình-mongodb)
+8. [Frontend - Xử lý API URL](#8-frontend---xử-lý-api-url)
+9. [Lệnh debug thường dùng](#9-lệnh-debug-thường-dùng)
+10. [Update code khi có commit mới](#10-update-code-khi-có-commit-mới)
+11. [Rollback về commit cũ](#11-rollback-về-commit-cũ)
+12. [Các lỗi thường gặp](#12-các-lỗi-thường-gặp)
+13. [Bật HTTPS (tương lai)](#13-bật-https-tương-lai)
 
 ---
 
@@ -62,10 +61,15 @@
 | **Database** | MongoDB 8.0 | 27017 (internal) | mongod |
 | **Proxy** | Nginx | 80 (public) | nginx |
 
+### Domain:
+
+- **Production domain**: `itjobs.ddns.net` (No-IP Dynamic DNS)
+- **Trỏ về EC2 IP**: Update DNS record trên No-IP khi IP thay đổi
+
 ### Lưu lượng request:
 
 ```
-Browser → Nginx:80
+Browser → Nginx:80 (itjobs.ddns.net)
   ├── /api/*      → proxy_pass → Gunicorn:8000 (Django)
   ├── /admin/*    → proxy_pass → Gunicorn:8000 (Django Admin)
   ├── /static/*   → serve file từ staticfiles/
@@ -76,6 +80,16 @@ Django:8000 → Scraper:37001 (gửi lệnh crawl)
 Scraper:37001 → Django:8000 (callback kết quả)
 Django:8000 → MongoDB:27017 (lưu trữ dữ liệu)
 ```
+
+### Cấu hình production:
+
+Project không sử dụng file `.env`. Tất cả cấu hình được hardcode trong `server/crawlweb/crawlweb/settings.py`. Script deploy sẽ tự động sửa `settings.py` cho production:
+
+- `DEBUG = False`
+- `ALLOWED_HOSTS = ['itjobs.ddns.net', 'localhost', '127.0.0.1']`
+- `SECRET_KEY` được sinh ngẫu nhiên
+- `CORS_ALLOWED_ORIGINS` cập nhật domain
+- `STATIC_ROOT` thêm vào cho collectstatic
 
 ---
 
@@ -107,6 +121,19 @@ Django:8000 → MongoDB:27017 (lưu trữ dữ liệu)
   chmod 400 your-key.pem
   ```
 
+### 2.5. Cấu hình Dynamic DNS (No-IP)
+
+Domain `itjobs.ddns.net` trỏ về EC2 IP. Cần đảm bảo:
+
+1. Đăng ký tài khoản No-IP: https://www.noip.com/
+2. Tạo hostname `itjobs.ddns.net` trỏ về **Elastic IP** của EC2
+3. **Quan trọng**: Gắn **Elastic IP** cho EC2 để IP không thay đổi khi restart
+4. Cài No-IP dynamic DNS client trên EC2 (nếu dùng IP động):
+   ```bash
+   sudo apt install -y noip2
+   # Hoặc dùng crontab cập nhật IP định kỳ
+   ```
+
 ---
 
 ## 3. Cấu hình Security Group
@@ -129,14 +156,6 @@ Tạo Security Group với các rules sau:
 
 > ⚠️ **KHÔNG** mở port 8000, 37001, 27017 ra ngoài. Các service này chỉ listen trên `127.0.0.1`.
 
-### Tạo Security Group trên AWS Console:
-
-1. Vào **EC2** → **Security Groups** → **Create security group**
-2. Tên: `crawlweb-sg`
-3. VPC: Chọn VPC của bạn
-4. Thêm Inbound/Outbound rules như trên
-5. Nhấn **Create security group**
-
 ---
 
 ## 4. SSH vào Server
@@ -144,7 +163,6 @@ Tạo Security Group với các rules sau:
 ### 4.1. Kết nối SSH
 
 ```bash
-# Thay YOUR_KEY.pem và YOUR_EC2_IP cho đúng
 ssh -i ~/your-key.pem ubuntu@YOUR_EC2_IP
 ```
 
@@ -163,7 +181,6 @@ sudo apt update && sudo apt upgrade -y
 ### 5.1. Clone repository
 
 ```bash
-# Clone project
 git clone https://github.com/chibaongunguoi/crawlweb_django.git
 cd crawlweb_django
 ```
@@ -171,23 +188,22 @@ cd crawlweb_django
 ### 5.2. Chạy deploy script
 
 ```bash
-# Cấp quyền thực thi
 chmod +x deploy/deploy.sh deploy/update.sh
-
-# Chạy deploy (cần root)
 sudo ./deploy/deploy.sh
 ```
 
-> Script sẽ tự động:
-> 1. Cài system packages (Python, Node.js, Nginx, MongoDB)
-> 2. Clone project vào `/opt/crawlweb`
-> 3. Tạo `.env` từ `.env.example` (tự sinh SECRET_KEY)
-> 4. Cài Python dependencies (backend + scraper)
-> 5. Build React frontend
-> 6. Cấu hình systemd services
-> 7. Cấu hình Nginx reverse proxy
-> 8. Mở firewall ports
-> 9. Start tất cả services
+### Script sẽ tự động thực hiện:
+
+| Bước | Mô tả |
+|------|-------|
+| 1 | Cài system packages (Python, Node.js, Nginx, MongoDB) |
+| 2 | Cài MongoDB 8.0 |
+| 3 | Cài Node.js 20 LTS |
+| 4 | Clone/update project vào `/opt/crawlweb` |
+| 5 | **Patch `settings.py` cho production** (DEBUG=False, ALLOWED_HOSTS, SECRET_KEY, CORS) |
+| 6 | Tạo Python venv, cài dependencies, collectstatic |
+| 7 | Build React frontend (`npm run build`) |
+| 8 | Cấu hình systemd services + Nginx + firewall |
 
 ### 5.3. Thời gian chạy
 
@@ -197,53 +213,15 @@ Script có thể mất **10-20 phút** tùy tốc độ mạng, bao gồm:
 - Cài Python packages: ~3-5 phút
 - Phần còn lại: ~2-3 phút
 
----
+### 5.4. Sau khi deploy thành công
 
-## 6. Cấu hình .env chi tiết
-
-Sau khi chạy script, file `.env` sẽ được tạo tại `/opt/crawlweb/.env`. Kiểm tra và chỉnh sửa:
-
-```bash
-sudo nano /opt/crawlweb/.env
-```
-
-### Các biến quan trọng:
-
-```bash
-# Django - PHẢI đổi SECRET_KEY nếu chưa auto-generate
-DJANGO_SECRET_KEY=your-random-secret-key-here
-DJANGO_DEBUG=False
-DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,YOUR_EC2_PUBLIC_IP
-
-# MongoDB - URL kết nối
-MONGO_URI=mongodb://localhost:27017/pbl4_db
-MONGO_DB_NAME=pbl4_db
-
-# Scraper - địa chỉ scraper service
-SCRAPER_HOST=127.0.0.1
-SCRAPER_PORT=37001
-
-# Callback URL - Django dùng để scraper gọi ngược lại
-SCRAPER_CALLBACK_BASE_URL=http://127.0.0.1:8000
-
-# CORS - danh sách origin được phép gọi API
-CORS_ALLOWED_ORIGINS=http://YOUR_EC2_PUBLIC_IP,http://localhost:3000
-```
-
-> ⚠️ Thay `YOUR_EC2_PUBLIC_IP` bằng IP thực của EC2 instance (ví dụ: `54.123.45.67`).
-
-### Lấy IP public của EC2:
-
-```bash
-# Chạy trên EC2:
-curl http://checkip.amazonaws.com
-```
+Truy cập: **http://itjobs.ddns.net**
 
 ---
 
-## 7. Kiểm tra Services
+## 6. Kiểm tra Services
 
-### 7.1. Kiểm tra trạng thái services
+### 6.1. Kiểm tra trạng thái services
 
 ```bash
 # Backend (Django + Gunicorn)
@@ -259,7 +237,7 @@ sudo systemctl status mongod
 sudo systemctl status nginx
 ```
 
-### 7.2. Kiểm tra kết nối
+### 6.2. Kiểm tra kết nối
 
 ```bash
 # Frontend (qua Nginx)
@@ -278,53 +256,60 @@ curl http://127.0.0.1:37001/docs
 mongosh --eval "db.runCommand({ping:1})"
 ```
 
-### 7.3. Kiểm tra từ browser
+### 6.3. Kiểm tra từ browser
 
 Mở trình duyệt, truy cập:
 
 ```
-http://YOUR_EC2_PUBLIC_IP
+http://itjobs.ddns.net
 ```
 
 Bạn sẽ thấy trang chủ của CrawlWeb.
 
 ---
 
-## 8. Cấu hình MongoDB
+## 7. Cấu hình MongoDB
 
-### 8.1. MongoDB đã được cài tự động bởi script
+### 7.1. MongoDB đã được cài tự động bởi script
 
 MongoDB 8.0 sẽ chạy trên port `27017` (localhost only).
 
-### 8.2. Tạo database và user (nếu cần)
+### 7.2. Tạo database user (recommended cho production)
 
 ```bash
-# Kết nối MongoDB shell
 mongosh
 
-# Switch to database
 use pbl4_db
 
-# Kiểm tra collections
+# Xem collections
 show collections
 
-# Đếm số documents trong JobDetail
+# Đếm documents
 db.api_jobdetail.countDocuments()
 
-# Tạo user cho database (recommended cho production)
+# Tạo user (optional nhưng recommended)
 db.createUser({
   user: "crawlweb",
   pwd: "your_mongo_password",
   roles: [{ role: "readWrite", db: "pbl4_db" }]
 })
 
-# Thoát
 exit
 ```
 
-Nếu tạo user, cập nhật `MONGO_URI` trong `.env`:
+Nếu tạo user, cần sửa `settings.py`:
 ```bash
-MONGO_URI=mongodb://crawlweb:your_mongo_password@localhost:27017/pbl4_db?authSource=pbl4_db
+sudo nano /opt/crawlweb/server/crawlweb/crawlweb/settings.py
+```
+Cập nhật `HOST`:
+```python
+DATABASES = {
+    "default": {
+        "ENGINE": "django_mongodb_backend",
+        "HOST": "mongodb://crawlweb:your_mongo_password@localhost:27017/pbl4_db?authSource=pbl4_db",
+        "NAME": "pbl4_db",
+    },
+}
 ```
 
 Sau đó restart backend:
@@ -332,7 +317,7 @@ Sau đó restart backend:
 sudo systemctl restart crawlweb-backend
 ```
 
-### 8.3. Backup MongoDB
+### 7.3. Backup MongoDB
 
 ```bash
 # Backup
@@ -342,7 +327,7 @@ mongodump --db=pbl4_db --out=/opt/crawlweb/backups/$(date +%Y%m%d_%H%M%S)
 mongorestore --db=pbl4_db /path/to/backup/pbl4_db
 ```
 
-### 8.4. Load dữ liệu mẫu (nếu database trống)
+### 7.4. Load dữ liệu mẫu (nếu database trống)
 
 ```bash
 cd /opt/crawlweb/server
@@ -353,31 +338,26 @@ deactivate
 
 ---
 
-## 9. Frontend - Xử lý API URL
+## 8. Frontend - Xử lý API URL
 
 ### Vấn đề
 
-Frontend React hiện tại hardcode `http://localhost:8000` trong các file `.jsx`. Khi deploy production, cần đảm bảo:
+Một số file frontend có thể hardcode `http://localhost:8000`. Script deploy đã cấu hình Nginx proxy `/api/*` → `127.0.0.1:8000`.
 
-### Giải pháp hiện tại (Nginx Proxy)
-
-Script deploy đã cấu hình Nginx proxy `/api/*` → `127.0.0.1:8000`. Các file React dùng relative URL (`/api/...`) sẽ hoạt động đúng qua Nginx.
-
-**Tuy nhiên**, nhiều file frontend đang hardcode `http://localhost:8000`. Cần thay đổi các file này trước khi build:
+### Nếu có lỗi CORS hoặc API không kết nối
 
 ```bash
-# Chạy trên EC2 sau khi clone, trước khi npm run build
+# Thay thế localhost URLs thành relative path trước khi build
 cd /opt/crawlweb/client/app/src
-
-# Thay thế tất cả http://localhost:8000 thành relative path
 find . -name "*.jsx" -exec sed -i 's|http://localhost:8000||g' {} +
 
-# Sau đó build
+# Rebuild
 cd /opt/crawlweb/client/app
 npm run build
-```
 
-> **Lưu ý**: Script `deploy.sh` cần được cập nhật để chạy bước này. Hoặc bạn có thể commit thay đổi vào source code (recommended).
+# Restart Nginx
+sudo systemctl restart nginx
+```
 
 ### Giải pháp dài hạn (Recommended)
 
@@ -392,9 +372,9 @@ Sau đó thay tất cả `http://localhost:8000` thành `API_BASE_URL` trong cá
 
 ---
 
-## 10. Lệnh debug thường dùng
+## 9. Lệnh debug thường dùng
 
-### 10.1. Xem logs
+### 9.1. Xem logs
 
 ```bash
 # Backend logs (Gunicorn access log)
@@ -419,7 +399,7 @@ sudo tail -f /var/log/nginx/error.log
 sudo tail -f /var/log/mongodb/mongod.log
 ```
 
-### 10.2. Restart services
+### 9.2. Restart services
 
 ```bash
 # Restart backend
@@ -441,7 +421,7 @@ sudo systemctl restart nginx
 sudo systemctl restart crawlweb-backend crawlweb-scraper nginx mongod
 ```
 
-### 10.3. Kiểm tra port đang lắng nghe
+### 9.3. Kiểm tra port đang lắng nghe
 
 ```bash
 # Xem tất cả ports
@@ -454,7 +434,7 @@ sudo ss -tlnp | grep :37001  # Scraper
 sudo ss -tlnp | grep :27017  # MongoDB
 ```
 
-### 10.4. Kiểm tra process
+### 9.4. Kiểm tra process
 
 ```bash
 # Xem processes của backend
@@ -473,7 +453,7 @@ df -h
 top -o %MEM
 ```
 
-### 10.5. Chạy Django management commands
+### 9.5. Chạy Django management commands
 
 ```bash
 cd /opt/crawlweb/server
@@ -494,7 +474,7 @@ python manage.py collectstatic --noinput
 deactivate
 ```
 
-### 10.6. Kiểm tra Nginx config
+### 9.6. Kiểm tra Nginx config
 
 ```bash
 # Test config syntax
@@ -507,9 +487,15 @@ sudo nginx -T
 sudo systemctl reload nginx
 ```
 
+### 9.7. Xem file settings.py hiện tại
+
+```bash
+cat /opt/crawlweb/server/crawlweb/crawlweb/settings.py
+```
+
 ---
 
-## 11. Update code khi có commit mới
+## 10. Update code khi có commit mới
 
 ### Cách nhanh (dùng script):
 
@@ -551,14 +537,6 @@ sudo systemctl restart crawlweb-scraper
 sudo systemctl reload nginx
 ```
 
-### Nếu có thay đổi .env:
-
-```bash
-sudo nano /opt/crawlweb/.env
-# Chỉnh sửa xong, restart backend
-sudo systemctl restart crawlweb-backend
-```
-
 ### Nếu có thay đổi MongoDB schema (migration):
 
 ```bash
@@ -573,7 +551,7 @@ sudo systemctl restart crawlweb-backend
 
 ---
 
-## 12. Rollback về commit cũ
+## 11. Rollback về commit cũ
 
 ### Cách nhanh (dùng script):
 
@@ -581,8 +559,20 @@ sudo systemctl restart crawlweb-backend
 # Xem commit trước đó
 cat /tmp/crawlweb_last_commit
 
-# Rollback
-sudo ./deploy/update.sh abc123def456
+# Rollback về commit đó
+cd /opt/crawlweb
+git checkout $(cat /tmp/crawlweb_last_commit)
+
+# Rebuild
+cd server && source myworld/bin/activate && pip install -r requirements.txt && deactivate
+cd ../scraper && source venv/bin/activate && pip install -r requirements.txt && deactivate
+cd ../../client/app && npm install && npm run build
+
+# Restart
+sudo systemctl restart crawlweb-backend crawlweb-scraper nginx
+
+# Quay về main khi đã sẵn sàng
+cd /opt/crawlweb && git checkout main
 ```
 
 ### Cách thủ công:
@@ -625,9 +615,9 @@ git checkout main
 
 ---
 
-## 13. Các lỗi thường gặp
+## 12. Các lỗi thường gặp
 
-### 13.1. Frontend trắng (blank page)
+### 12.1. Frontend trắng (blank page)
 
 **Nguyên nhân**: API calls trả về lỗi CORS hoặc kết nối sai.
 
@@ -642,13 +632,13 @@ curl -v http://localhost:8000/api/jobs/search/
 # 3. Kiểm tra Nginx proxy
 curl -v http://localhost/api/jobs/search/
 
-# 4. Kiểm tra CORS_ALLOWED_ORIGINS trong .env
-cat /opt/crawlweb/.env | grep CORS
+# 4. Kiểm tra CORS trong settings.py
+grep CORS /opt/crawlweb/server/crawlweb/crawlweb/settings.py
 
 # 5. Kiểm tra browser console (F12) để xem lỗi cụ thể
 ```
 
-### 13.2. Gunicorn không start được
+### 12.2. Gunicorn không start được
 
 **Nguyên nhân**: Module import error hoặc port đã bị chiếm.
 
@@ -667,7 +657,7 @@ sudo fuser -k 8000/tcp
 sudo systemctl restart crawlweb-backend
 ```
 
-### 13.3. MongoDB không kết nối được
+### 12.3. MongoDB không kết nối được
 
 **Cách sửa**:
 ```bash
@@ -687,7 +677,30 @@ sudo tail -20 /var/log/mongodb/mongod.log
 mongosh --eval "db.runCommand({ping:1})"
 ```
 
-### 13.4. Scraper không hoạt động
+### 12.4. Lỗi cài MongoDB trên Ubuntu 24.04: "Unable to locate package mongodb-org"
+
+**Nguyên nhân**: MongoDB 8.0 chưa có package cho Ubuntu 24.04 (`noble`). Script deploy đã tự sửa lỗi này bằng cách dùng `jammy` (Ubuntu 22.04) làm repo codename.
+
+**Nếu chạy script cũ hoặc cài thủ công bị lỗi**:
+```bash
+# Xóa source list cũ bị lỗi
+sudo rm -f /etc/apt/sources.list.d/mongodb-org-*.list
+
+# Thêm lại với codename "jammy" (không phải "noble")
+echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/8.0 multiverse" | \
+    sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list
+
+# Nếu có lỗi "multimedya" từ source cũ
+sudo rm -f /etc/apt/sources.list.d/<file-with-typo>.list
+
+# Update và cài lại
+sudo apt update
+sudo apt install -y mongodb-org
+sudo systemctl start mongod
+sudo systemctl enable mongod
+```
+
+### 12.5. Scraper không hoạt động
 
 **Cách sửa**:
 ```bash
@@ -704,7 +717,7 @@ curl http://127.0.0.1:37001/docs
 sudo systemctl restart crawlweb-scraper
 ```
 
-### 13.5. Nginx 502 Bad Gateway
+### 12.5. Nginx 502 Bad Gateway
 
 **Nguyên nhân**: Backend (Gunicorn) không chạy hoặc crashed.
 
@@ -723,7 +736,7 @@ sudo systemctl restart crawlweb-backend
 sudo tail -20 /var/log/nginx/error.log
 ```
 
-### 13.6. Permission denied
+### 12.6. Permission denied
 
 **Cách sửa**:
 ```bash
@@ -735,7 +748,7 @@ sudo chmod -R 755 /opt/crawlweb
 sudo chmod -R 777 /opt/crawlweb/server/media
 ```
 
-### 13.7. Out of memory (OOM)
+### 12.7. Out of memory (OOM)
 
 **Nguyên nhân**: Instance quá nhỏ cho cả 3 services.
 
@@ -748,16 +761,12 @@ free -h
 sudo nano /etc/systemd/system/crawlweb-backend.service
 # Đổi --workers 3 thành --workers 2
 
-# Giảm SCRAPE_CONCURRENCY trong .env
-sudo nano /opt/crawlweb/.env
-# SCRAPE_CONCURRENCY=1
-
-# Restart
+# Reload và restart
 sudo systemctl daemon-reload
 sudo systemctl restart crawlweb-backend crawlweb-scraper
 ```
 
-### 13.8. npm build lỗi
+### 12.8. npm build lỗi
 
 **Cách sửa**:
 ```bash
@@ -776,22 +785,21 @@ npm run build
 NODE_OPTIONS="--max-old-space-size=4096" npm run build
 ```
 
-### 13.9. Django SECRET_KEY không hợp lệ
+### 12.9. Django ALLOWED_HOSTS error
+
+**Nguyên nhân**: Domain không có trong `ALLOWED_HOSTS`.
 
 **Cách sửa**:
 ```bash
-# Tạo secret key mới
-python3 -c "import secrets; print(secrets.token_urlsafe(50))"
+sudo nano /opt/crawlweb/server/crawlweb/crawlweb/settings.py
 
-# Cập nhật vào .env
-sudo nano /opt/crawlweb/.env
-# DJANGO_SECRET_KEY=<key_mới>
+# Đảm bảo có:
+# ALLOWED_HOSTS = ['itjobs.ddns.net', 'localhost', '127.0.0.1']
 
-# Restart
 sudo systemctl restart crawlweb-backend
 ```
 
-### 13.10. Disk đầy
+### 12.10. Disk đầy
 
 ```bash
 # Kiểm tra disk usage
@@ -811,36 +819,55 @@ pip cache purge
 sudo apt autoremove -y
 ```
 
+### 12.11. Domain không resolve về EC2
+
+**Nguyên nhân**: No-IP DNS chưa cập nhật IP mới của EC2.
+
+**Cách sửa**:
+```bash
+# Kiểm tra IP hiện tại của EC2
+curl http://checkip.amazonaws.com
+
+# Kiểm tra domain resolve
+nslookup itjobs.ddns.net
+
+# Nếu IP khác nhau → cập nhật DNS trên No-IP dashboard
+# https://www.noip.com/members/dns/
+
+# Nếu dùng No-IP client trên EC2
+sudo noip2 -S  # Xem status
+sudo noip2 -U 5  # Force update (mỗi 5 phút)
+```
+
 ---
 
-## 14. Bật HTTPS (tương lai)
+## 13. Bật HTTPS (tương lai)
 
 Khi sẵn sàng bật HTTPS:
 
 ```bash
-# 1. Cần có domain name trỏ về EC2 IP (A record)
+# 1. Install Certbot
+sudo apt install -y certbot python3-certbot-nginx
 
-# 2. Cập nhật server_name trong Nginx
-sudo nano /etc/nginx/sites-available/crawlweb
-# server_name your-domain.com www.your-domain.com;
+# 2. Chạy Certbot (domain đã trỏ về EC2 IP)
+sudo certbot --nginx -d itjobs.ddns.net
 
-# 3. Chạy Certbot
-sudo certbot --nginx -d your-domain.com -d www.your-domain.com
-
-# 4. Certbot sẽ tự động:
+# 3. Certbot sẽ tự động:
 #    - Cài SSL certificate
 #    - Cập nhật Nginx config
 #    - Tạo cron job auto-renew
 
-# 5. Kiểm tra auto-renew
+# 4. Kiểm tra auto-renew
 sudo certbot renew --dry-run
 
-# 6. Cập nhật .env
-sudo nano /opt/crawlweb/.env
-# DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,your-domain.com,www.your-domain.com
-# CORS_ALLOWED_ORIGINS=https://your-domain.com,http://localhost:3000
+# 5. Cập nhật CORS trong settings.py
+sudo nano /opt/crawlweb/server/crawlweb/crawlweb/settings.py
+# CORS_ALLOWED_ORIGINS = [
+#     "https://itjobs.ddns.net",
+#     "http://localhost:3000",
+# ]
 
-# 7. Restart
+# 6. Restart
 sudo systemctl restart crawlweb-backend
 sudo systemctl reload nginx
 ```
@@ -860,12 +887,11 @@ sudo systemctl reload nginx
 | Reload nginx | `systemctl reload nginx` |
 | Kiểm tra ports | `ss -tlnp` |
 | Test API | `curl http://localhost/api/jobs/search/` |
-| Edit .env | `nano /opt/crawlweb/.env` |
+| Edit settings | `nano /opt/crawlweb/server/crawlweb/crawlweb/settings.py` |
 | Django shell | `cd /opt/crawlweb/server && source myworld/bin/activate && python manage.py shell` |
 | MongoDB shell | `mongosh` |
 | Kiểm tra disk | `df -h` |
 | Kiểm tra RAM | `free -h` |
-| Rollback | `sudo ./deploy/update.sh <commit_hash>` |
 
 ---
 
@@ -873,7 +899,6 @@ sudo systemctl reload nginx
 
 ```
 /opt/crawlweb/                          # Project root
-├── .env                                # Environment variables
 ├── deploy/
 │   ├── deploy.sh                       # Script deploy lần đầu
 │   └── update.sh                       # Script update/rollback
@@ -888,7 +913,7 @@ sudo systemctl reload nginx
 │   ├── staticfiles/                    # Django collected static files
 │   ├── media/                          # User uploads (CV files)
 │   ├── crawlweb/
-│   │   ├── settings.py
+│   │   ├── settings.py                 # ⚡ Production config đã patch
 │   │   ├── wsgi.py
 │   │   └── urls.py
 │   ├── api/
@@ -915,4 +940,3 @@ sudo systemctl reload nginx
 ├── crawlweb-backend-error.log          # Backend error log
 └── nginx/
     ├── access.log
-    └── error.log

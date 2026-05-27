@@ -1,17 +1,24 @@
 #!/usr/bin/env bash
 # ============================================================
-# CrawlWeb - Update/Deploy Code on Production Server
+# CrawlWeb - Quick Update Script (Code only, no infra changes)
 # ============================================================
 # Usage:
 #   chmod +x deploy/update.sh
-#   sudo ./deploy/update.sh              # deploy latest from current branch
-#   sudo ./deploy/update.sh <commit_hash>  # rollback to specific commit
+#   sudo ./deploy/update.sh
+#
+# This script:
+#   1. Pulls latest code from GitHub
+#   2. Installs updated dependencies (backend + frontend)
+#   3. Re-builds frontend
+#   4. Runs collectstatic
+#   5. Restarts services
 # ============================================================
 
 set -euo pipefail
 
 PROJECT_DIR="/opt/crawlweb"
-COMMIT="${1:-}"
+BRANCH="main"
+DOMAIN="itjobs.ddns.net"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -26,69 +33,101 @@ if [[ $EUID -ne 0 ]]; then
     err "This script must be run as root. Use: sudo ./update.sh"
 fi
 
-cd "${PROJECT_DIR}"
-
-# Save current commit for rollback
-PREVIOUS_COMMIT=$(git rev-parse HEAD)
-log "Current commit: ${PREVIOUS_COMMIT}"
-echo "${PREVIOUS_COMMIT}" > /tmp/crawlweb_last_commit
-
-if [[ -n "${COMMIT}" ]]; then
-    log "Rolling back to commit: ${COMMIT}"
-    git checkout "${COMMIT}"
-else
-    log "Pulling latest changes..."
-    git fetch origin
-    CURRENT_BRANCH=$(git branch --show-current)
-    git pull origin "${CURRENT_BRANCH}"
+if [[ ! -d "${PROJECT_DIR}/.git" ]]; then
+    err "Project not found at ${PROJECT_DIR}. Run deploy.sh first."
 fi
 
-CURRENT_COMMIT=$(git rev-parse HEAD)
-log "Now at commit: ${CURRENT_COMMIT}"
+cd "${PROJECT_DIR}"
 
-# --- Backend ---
-log "Updating backend..."
+# ============================================================
+# STEP 1: Pull latest code
+# ============================================================
+log "Step 1/5: Pulling latest code from GitHub..."
+
+# Save current commit for rollback reference
+CURRENT_COMMIT=$(git rev-parse HEAD)
+echo "${CURRENT_COMMIT}" > /tmp/crawlweb_last_commit
+log "Current commit: ${CURRENT_COMMIT} (saved for rollback)"
+
+git fetch origin
+git checkout "${BRANCH}"
+git pull origin "${BRANCH}"
+
+NEW_COMMIT=$(git rev-parse HEAD)
+log "Updated to commit: ${NEW_COMMIT}"
+
+# ============================================================
+# STEP 2: Update Python dependencies
+# ============================================================
+log "Step 2/5: Updating Python dependencies..."
+
 cd "${PROJECT_DIR}/server"
 source myworld/bin/activate
-pip install -r requirements.txt -q
-python manage.py collectstatic --noinput
+pip install --upgrade pip
+pip install -r requirements.txt --quiet
 deactivate
 
-# --- Scraper ---
-log "Updating scraper..."
-cd "${PROJECT_DIR}/server/scraper"
-source venv/bin/activate
-pip install -r requirements.txt -q
-deactivate
+# Update scraper dependencies if needed
+if [[ -f "${PROJECT_DIR}/server/scraper/requirements.txt" ]]; then
+    cd "${PROJECT_DIR}/server/scraper"
+    source venv/bin/activate
+    pip install -r requirements.txt --quiet
+    deactivate
+fi
 
-# --- Frontend ---
-log "Rebuilding frontend..."
+# ============================================================
+# STEP 3: Update frontend dependencies and build
+# ============================================================
+log "Step 3/5: Building frontend..."
+
 cd "${PROJECT_DIR}/client/app"
 npm install --silent
 npm run build
 
-# --- Restart services ---
-log "Restarting services..."
+# ============================================================
+# STEP 4: Django maintenance
+# ============================================================
+log "Step 4/5: Django collectstatic..."
+
+cd "${PROJECT_DIR}/server"
+source myworld/bin/activate
+python manage.py collectstatic --noinput 2>/dev/null || warn "collectstatic skipped (may not be configured)"
+deactivate
+
+# ============================================================
+# STEP 5: Restart services
+# ============================================================
+log "Step 5/5: Restarting services..."
+
 systemctl restart crawlweb-backend
 systemctl restart crawlweb-scraper
-systemctl reload nginx
+systemctl restart nginx
 
-sleep 3
+# ============================================================
+# Verification
+# ============================================================
+sleep 2
+log "============================================"
+log "Update complete!"
+log "============================================"
+echo ""
+echo "  Previous commit: ${CURRENT_COMMIT:0:8}"
+echo "  Current commit:  ${NEW_COMMIT:0:8}"
+echo ""
+echo "  Frontend: http://${DOMAIN}"
+echo "  API:      http://${DOMAIN}/api/"
+echo ""
+echo "  Service status:"
+systemctl is-active crawlweb-backend && echo "  ✅ Backend: running" || echo "  ❌ Backend: FAILED"
+systemctl is-active crawlweb-scraper && echo "  ✅ Scraper: running" || echo "  ❌ Scraper: FAILED"
+systemctl is-active nginx && echo "  ✅ Nginx: running" || echo "  ❌ Nginx: FAILED"
+echo ""
 
-# --- Verify ---
-BACKEND_STATUS=$(systemctl is-active crawlweb-backend 2>/dev/null || echo "inactive")
-SCRAPER_STATUS=$(systemctl is-active crawlweb-scraper 2>/dev/null || echo "inactive")
-
-if [[ "${BACKEND_STATUS}" == "active" && "${SCRAPER_STATUS}" == "active" ]]; then
-    log "✅ Update complete! All services running."
-    log "Backend: ${BACKEND_STATUS} | Scraper: ${SCRAPER_STATUS}"
+# Quick health check
+if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1 | grep -q "200"; then
+    log "✅ Site is accessible at http://${DOMAIN}"
 else
-    warn "Some services may not be running:"
-    warn "  Backend: ${BACKEND_STATUS}"
-    warn "  Scraper: ${SCRAPER_STATUS}"
-    warn "Check logs: journalctl -u crawlweb-backend -n 50"
+    warn "Site may need a moment. Check: curl http://127.0.0.1"
 fi
 
-echo ""
-log "To rollback to previous commit, run:"
-echo "  sudo ./update.sh ${PREVIOUS_COMMIT}"
+log "Done!"

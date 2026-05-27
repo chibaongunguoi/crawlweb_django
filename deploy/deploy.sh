@@ -10,11 +10,12 @@
 #   1. Installs system packages (Nginx, Python, Node.js, MongoDB)
 #   2. Sets up the project directory
 #   3. Creates Python venv and installs backend + scraper deps
-#   4. Builds React frontend (with API URL replacement)
+#   4. Builds React frontend
 #   5. Runs Django collectstatic
-#   6. Configures systemd services (backend + scraper)
-#   7. Configures Nginx reverse proxy (HTTP)
-#   8. Opens firewall ports
+#   6. Patches settings.py for production (DEBUG=False, ALLOWED_HOSTS, CORS)
+#   7. Configures systemd services (backend + scraper)
+#   8. Configures Nginx reverse proxy (HTTP)
+#   9. Opens firewall ports
 # ============================================================
 
 set -euo pipefail
@@ -23,7 +24,7 @@ set -euo pipefail
 PROJECT_DIR="/opt/crawlweb"
 REPO_URL="https://github.com/chibaongunguoi/crawlweb_django.git"
 BRANCH="main"
-DOMAIN_OR_IP="${EC2_PUBLIC_IP:-$(curl -s http://checkip.amazonaws.com || echo 'YOUR_EC2_IP')}"
+DOMAIN="itjobs.ddns.net"
 DJANGO_PORT=8000
 SCRAPER_PORT=37001
 NGINX_HTTP_PORT=80
@@ -46,7 +47,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 log "Starting deployment for CrawlWeb..."
-log "Domain/IP: ${DOMAIN_OR_IP}"
+log "Domain: ${DOMAIN}"
 log "Project directory: ${PROJECT_DIR}"
 
 # ============================================================
@@ -61,7 +62,6 @@ apt-get install -y \
     build-essential \
     python3 python3-pip python3-venv python3-dev \
     nginx \
-    certbot python3-certbot-nginx \
     gnupg
 
 # ============================================================
@@ -70,11 +70,28 @@ apt-get install -y \
 log "Step 2/8: Installing MongoDB 8.0..."
 
 if ! command -v mongod &>/dev/null; then
+    # Use 'jammy' (22.04) as MongoDB repo codename
+    # MongoDB 8.0 repo may not have packages for noble (24.04) yet
+    # Using jammy is the official workaround for Ubuntu 24.04
+    MONGO_CODENAME="jammy"
+
     curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | \
         gpg -o /usr/share/keyrings/mongodb-server-8.0.gpg --dearmor
 
-    echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu noble/mongodb-org/8.0 multimedya" > /etc/apt/sources.list.d/mongodb-org-8.0.list 2>/dev/null || \
-    echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/8.0 multiverse" > /etc/apt/sources.list.d/mongodb-org-8.0.list
+    # Clean any old/broken MongoDB sources
+    rm -f /etc/apt/sources.list.d/mongodb-org-*.list
+
+    echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu ${MONGO_CODENAME}/mongodb-org/8.0 multiverse" \
+        > /etc/apt/sources.list.d/mongodb-org-8.0.list
+
+    # Also clean any broken third-party sources that may cause warnings
+    # (e.g., files with 'multimedya' typo)
+    for f in /etc/apt/sources.list.d/*.list; do
+        if grep -q "multimedya" "$f" 2>/dev/null; then
+            warn "Removing broken source: $f"
+            rm -f "$f"
+        fi
+    done
 
     apt-get update -y
     apt-get install -y mongodb-org
@@ -88,7 +105,7 @@ else
 fi
 
 # Wait for MongoDB to be ready
-sleep 3
+sleep 5
 if mongosh --eval "db.runCommand({ping:1})" --quiet 2>/dev/null || mongo --eval "db.runCommand({ping:1})" --quiet 2>/dev/null; then
     log "MongoDB is running."
 else
@@ -127,33 +144,36 @@ else
 fi
 
 # ============================================================
-# STEP 5: Create .env file
+# STEP 5: Patch settings.py for production
 # ============================================================
-log "Step 5/8: Setting up environment..."
+log "Step 5/8: Patching settings.py for production..."
 
-if [[ ! -f "${PROJECT_DIR}/.env" ]]; then
-    if [[ -f "${PROJECT_DIR}/.env.example" ]]; then
-        cp "${PROJECT_DIR}/.env.example" "${PROJECT_DIR}/.env"
-        
-        # Auto-replace placeholders
-        SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(50))")
-        sed -i "s|CHANGE_ME_TO_A_RANDOM_STRING_50_CHARS|${SECRET_KEY}|g" "${PROJECT_DIR}/.env"
-        sed -i "s|YOUR_EC2_PUBLIC_IP|${DOMAIN_OR_IP}|g" "${PROJECT_DIR}/.env"
-        sed -i "s|http://YOUR_EC2_PUBLIC_IP|http://${DOMAIN_OR_IP}|g" "${PROJECT_DIR}/.env"
-        
-        log ".env created from .env.example with auto-generated SECRET_KEY."
-        warn ">>> REVIEW and edit ${PROJECT_DIR}/.env if needed! <<<"
-    else
-        err ".env.example not found. Create .env manually."
-    fi
-else
-    log ".env already exists, keeping current values."
+SETTINGS_FILE="${PROJECT_DIR}/server/crawlweb/crawlweb/settings.py"
+
+# Generate a secure secret key
+SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(50))")
+
+# Patch SECRET_KEY
+sed -i "s|^SECRET_KEY = .*|SECRET_KEY = '${SECRET_KEY}'|" "${SETTINGS_FILE}"
+
+# Patch DEBUG to False
+sed -i "s|^DEBUG = True|DEBUG = False|" "${SETTINGS_FILE}"
+
+# Patch ALLOWED_HOSTS
+sed -i "s|^ALLOWED_HOSTS = \[\]|ALLOWED_HOSTS = ['${DOMAIN}', 'localhost', '127.0.0.1']|" "${SETTINGS_FILE}"
+
+# Patch CORS_ALLOWED_ORIGINS
+sed -i "s|http://localhost:3000|http://${DOMAIN}|g" "${SETTINGS_FILE}"
+sed -i "s|http://127.0.0.1:3000|http://${DOMAIN}|g" "${SETTINGS_FILE}"
+
+# Add STATIC_ROOT if not present
+if ! grep -q "STATIC_ROOT" "${SETTINGS_FILE}"; then
+    echo "" >> "${SETTINGS_FILE}"
+    echo "# Production static files collection" >> "${SETTINGS_FILE}"
+    echo "STATIC_ROOT = BASE_DIR / 'staticfiles'" >> "${SETTINGS_FILE}"
 fi
 
-# Source .env for use in this script
-set -a
-source "${PROJECT_DIR}/.env" 2>/dev/null || true
-set +a
+log "settings.py patched: DEBUG=False, ALLOWED_HOSTS=['${DOMAIN}', 'localhost', '127.0.0.1']"
 
 # ============================================================
 # STEP 6: Python Backend + Scraper Setup
@@ -174,6 +194,10 @@ pip install -r requirements.txt
 # Install production server
 pip install gunicorn
 
+# Collect static files
+log "Running collectstatic..."
+python manage.py collectstatic --noinput
+
 # Load test data if database is empty
 JOB_COUNT=$(python -c "
 import os, django
@@ -187,12 +211,10 @@ if [[ "${JOB_COUNT}" == "0" ]]; then
     log "Database is empty, loading test data..."
     if [[ -f "load_test_data.py" ]]; then
         python manage.py shell < load_test_data.py 2>/dev/null || warn "Failed to load test data."
+    else
+        warn "No load_test_data.py found. Database is empty."
     fi
 fi
-
-# Collect static files
-log "Running collectstatic..."
-python manage.py collectstatic --noinput
 
 deactivate
 
@@ -216,8 +238,8 @@ cd "${PROJECT_DIR}/client/app"
 # Install dependencies
 npm install
 
-# Build production bundle with dynamic API URL
-# The build will use relative URLs by default, and Nginx will proxy /api
+# Build production bundle
+# The build uses relative URLs by default, and Nginx will proxy /api
 npm run build
 
 log "Frontend built to client/app/build/"
@@ -240,7 +262,7 @@ User=root
 Group=root
 WorkingDirectory=${PROJECT_DIR}/server
 Environment="PATH=${PROJECT_DIR}/server/myworld/bin"
-EnvironmentFile=${PROJECT_DIR}/.env
+Environment="DJANGO_SETTINGS_MODULE=crawlweb.settings"
 ExecStart=${PROJECT_DIR}/server/myworld/bin/gunicorn \\
     crawlweb.wsgi:application \\
     --bind 127.0.0.1:${DJANGO_PORT} \\
@@ -267,7 +289,6 @@ User=root
 Group=root
 WorkingDirectory=${PROJECT_DIR}/server/scraper
 Environment="PATH=${PROJECT_DIR}/server/scraper/venv/bin"
-EnvironmentFile=${PROJECT_DIR}/.env
 ExecStart=${PROJECT_DIR}/server/scraper/venv/bin/python -m uvicorn \\
     src.main:app \\
     --host 127.0.0.1 \\
@@ -283,7 +304,7 @@ EOF
 cat > /etc/nginx/sites-available/crawlweb << EOF
 server {
     listen ${NGINX_HTTP_PORT};
-    server_name ${DOMAIN_OR_IP};
+    server_name ${DOMAIN};
 
     # Frontend static files (React build)
     root ${PROJECT_DIR}/client/app/build;
@@ -370,9 +391,9 @@ echo "  Nginx:    systemctl status nginx"
 echo "  MongoDB:  systemctl status mongod"
 echo ""
 echo -e "${CYAN}Access:${NC}"
-echo "  Frontend: http://${DOMAIN_OR_IP}"
-echo "  API:      http://${DOMAIN_OR_IP}/api/"
-echo "  Admin:    http://${DOMAIN_OR_IP}/admin/"
+echo "  Frontend: http://${DOMAIN}"
+echo "  API:      http://${DOMAIN}/api/"
+echo "  Admin:    http://${DOMAIN}/admin/"
 echo ""
 echo -e "${CYAN}Logs:${NC}"
 echo "  Backend:  tail -f /var/log/crawlweb-backend-error.log"
@@ -389,7 +410,7 @@ echo ""
 # Final check
 sleep 3
 if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:${NGINX_HTTP_PORT} | grep -q "200"; then
-    log "✅ Frontend is accessible at http://${DOMAIN_OR_IP}"
+    log "✅ Frontend is accessible at http://${DOMAIN}"
 else
     warn "Frontend may need a moment to start. Try: curl http://127.0.0.1"
 fi
@@ -400,4 +421,4 @@ else
     warn "Backend may still be starting. Check: systemctl status crawlweb-backend"
 fi
 
-log "Done! Open http://${DOMAIN_OR_IP} in your browser."
+log "Done! Open http://${DOMAIN} in your browser."
