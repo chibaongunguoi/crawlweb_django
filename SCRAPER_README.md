@@ -165,7 +165,15 @@ Trong `server/scraper/.env` (tùy chọn):
 ```env
 SCRAPER_HOST=localhost
 SCRAPER_PORT=37001
+SCRAPER_MAX_RETRIES=5
+SCRAPER_RETRY_DELAY=5
+SCRAPER_CONCURRENCY=4
 ```
+
+Ghi chú:
+- `SCRAPER_MAX_RETRIES`: số lần retry khi scrape từng URL.
+- `SCRAPER_RETRY_DELAY`: delay cơ bản (giây) trước khi retry, có backoff.
+- `SCRAPER_CONCURRENCY`: số worker xử lý URL song song trong 1 job.
 
 ### Scraper Strategy
 
@@ -226,13 +234,19 @@ python main.py
 {
   "_id": ObjectId,
   "urls": ["url1", "url2"],  # JSONField
-  "status": "pending|processing|completed|failed",
+  "status": "pending|queued|processing|retrying|completed|failed",
   "totalUrls": 10,
   "processedUrls": 5,
   "progress": 50,  # 0-100
   "jobCount": 50,  # Number of jobs scraped
   "currentUrl": "https://...",
   "errorMessage": null,
+  "lastError": null,
+  "retryCount": 1,
+  "maxRetries": 3,
+  "retryDelay": 30,
+  "nextRetryAt": DateTime,
+  "lastAttemptAt": DateTime,
   "metadata": {},
   "createdAt": DateTime,
   "completedAt": DateTime

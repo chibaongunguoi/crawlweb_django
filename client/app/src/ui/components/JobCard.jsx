@@ -3,6 +3,14 @@ import './JobCard.css';
 export default function JobCard({ job, followCount = null, showFollowBadge = false, onClick, highlightTerms = [] }) {
   const hasFollowCount = showFollowBadge && followCount !== null && followCount > 0;
   const source = job.source || 'unknown';
+  const isExpired = job.isExpired;
+  const daysLeft = job.daysLeft;
+  const deadlineLabel = isExpired === null || isExpired === undefined
+    ? 'Chưa rõ hạn'
+    : (isExpired ? 'Hết hạn nộp' : 'Còn hạn');
+  const deadlineClass = isExpired === null || isExpired === undefined
+    ? 'deadline-chip unknown'
+    : (isExpired ? 'deadline-chip expired' : 'deadline-chip active');
 
   const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -63,6 +71,12 @@ export default function JobCard({ job, followCount = null, showFollowBadge = fal
         <div className="job-info">
           <h3 className="job-title">{highlightText(job.job_title)}</h3>
           <div className="job-source">Nguồn: {source}</div>
+          <div className={deadlineClass}>
+            {deadlineLabel}
+            {daysLeft !== null && daysLeft !== undefined && !isExpired && (
+              <span className="deadline-days">• {daysLeft} ngày</span>
+            )}
+          </div>
           <div className="job-details">
             <span className="detail-item">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">

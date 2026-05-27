@@ -11,6 +11,17 @@ export default function JobSearch() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const REMOTE_WORDS = ["remote", "work from home", "wfh", "tu xa", "lam tu xa"];
+  const REMOTE_CONDENSED = ["remote", "workfromhome", "wfh", "tuxa", "lamtuxa"];
+  const HCM_WORDS = ["ho chi minh", "tp ho chi minh", "sai gon", "saigon"];
+  const HCM_CONDENSED = ["hochiminh", "tphochiminh", "hcm", "hcmc", "hcmm", "tphcm", "saigon"];
+  const HN_WORDS = ["ha noi", "tp ha noi", "hanoi"];
+  const HN_CONDENSED = ["hanoi", "tphanoi", "hn"];
+  const DN_WORDS = ["da nang", "tp da nang", "danang"];
+  const DN_CONDENSED = ["danang", "tpdanang", "dn"];
+  const OTHER_WORDS = ["khac", "other", "others"];
+  const OTHER_CONDENSED = ["khac", "other", "others"];
+
   useEffect(() => {
     fetchSkillsAndCities();
   }, []);
@@ -24,7 +35,7 @@ export default function JobSearch() {
 
   const fetchSkillsAndCities = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/jobs/', {
+      const response = await fetch('http://localhost:8000/api/jobs/filters/', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -32,39 +43,24 @@ export default function JobSearch() {
       });
       
       if (response.ok) {
-        const jobsResponse = await response.json();
-        const jobs = jobsResponse.data || jobsResponse || [];
-        
-        // Extract unique skills
-        const allSkills = new Set();
-        jobs.forEach(job => {
-          if (job.skills && Array.isArray(job.skills)) {
-            job.skills.forEach(skill => {
-              if (skill && skill.trim()) {
-                allSkills.add(skill.trim());
-              }
-            });
-          }
-        });
-        
-        // Extract unique cities with normalization
+        const data = await response.json();
+        const skillsList = (data.skills || []).map((skill) => skill.trim()).filter(Boolean);
         const cityMap = new Map();
-        jobs.forEach(job => {
-          if (job.province && job.province.trim()) {
-            const normalizedCity = normalizeCity(job.province.trim());
-            if (!cityMap.has(normalizedCity.toLowerCase())) {
-              cityMap.set(normalizedCity.toLowerCase(), normalizedCity);
-            }
+
+        (data.cities || []).forEach((city) => {
+          if (!city || !city.trim()) {
+            return;
           }
-          if (job.location && job.location.trim()) {
-            const normalizedCity = normalizeCity(job.location.trim());
-            if (!cityMap.has(normalizedCity.toLowerCase())) {
-              cityMap.set(normalizedCity.toLowerCase(), normalizedCity);
-            }
+          const normalizedCity = getCanonicalCity(city.trim(), "Khác");
+          if (!normalizedCity) {
+            return;
+          }
+          if (!cityMap.has(normalizedCity.toLowerCase())) {
+            cityMap.set(normalizedCity.toLowerCase(), normalizedCity);
           }
         });
-        
-        setSkills(Array.from(allSkills).sort());
+
+        setSkills(skillsList.sort());
         setCities(Array.from(cityMap.values()).sort());
       }
     } catch (error) {
@@ -72,12 +68,36 @@ export default function JobSearch() {
     }
   };
 
-  const normalizeCity = (cityName) => {
-    return cityName
+  const normalizeLocationText = (value) => {
+    if (!value) return "";
+    const ascii = value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    return ascii
       .toLowerCase()
-      .split(' ')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim()
+      .replace(/\s+/g, " ");
+  };
+
+  const condenseLocationText = (value) => value.replace(/[^a-z0-9]+/g, "");
+
+  const matchesLocation = (text, condensed, words, condensedWords) =>
+    words.some((token) => text.includes(token)) ||
+    condensedWords.some((token) => condensed.includes(token));
+
+  const getCanonicalCity = (value, fallback = "") => {
+    const text = normalizeLocationText(value);
+    if (!text) return fallback;
+    const condensed = condenseLocationText(text);
+
+    if (matchesLocation(text, condensed, REMOTE_WORDS, REMOTE_CONDENSED)) return "Remote";
+    if (matchesLocation(text, condensed, HCM_WORDS, HCM_CONDENSED)) return "Hồ Chí Minh";
+    if (matchesLocation(text, condensed, HN_WORDS, HN_CONDENSED)) return "Hà Nội";
+    if (matchesLocation(text, condensed, DN_WORDS, DN_CONDENSED)) return "Đà Nẵng";
+    if (matchesLocation(text, condensed, OTHER_WORDS, OTHER_CONDENSED)) return "Khác";
+
+    return fallback;
   };
 
   const handleSearch = (e) => {

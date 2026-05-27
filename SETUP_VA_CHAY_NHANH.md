@@ -52,7 +52,7 @@ npm start
 
 Frontend mac dinh: `http://localhost:3000`
 
-## 6) Kiem tra nhanh feature `source`
+## 6) Kiem tra nhanh feature `source` + deadline
 
 1. Goi API scrape upload:
 
@@ -69,7 +69,48 @@ POST /api/scrape/upload/
 
 Mong doi: job co field `source`, vi du `"source": "devworks"`.
 
-## 7) Luu y mapping nguon
+Neu URL co deadline, response se co them:
+- `deadline` (yyyy-mm-dd)
+- `isExpired` (true/false/null)
+- `daysLeft` (so ngay con lai)
+
+## 7) Search + pagination API moi
+
+Endpoint moi:
+- `GET /api/jobs/search/?q=python&city=ha%20noi&page=1&pageSize=24`
+
+Response:
+```json
+{
+  "items": [],
+  "page": 1,
+  "pageSize": 24,
+  "total": 0,
+  "totalPages": 0
+}
+```
+
+Job detail theo id:
+- `GET /api/jobs/{id}`
+
+## 8) Scraper queue / retry / schedule
+
+Backend se xep hang crawl job va retry neu scraper down.
+
+Env (PowerShell):
+```powershell
+$env:SCRAPE_MAX_RETRIES=3
+$env:SCRAPE_RETRY_DELAY=30
+$env:SCRAPE_CONCURRENCY=2
+$env:SCRAPER_CALLBACK_BASE_URL="http://localhost:8000"
+```
+
+API schedule:
+- `POST /api/scrape/schedules/` tao lich
+- `POST /api/scrape/schedules/{id}/toggle/` bat/tat lich
+- `POST /api/scrape/jobs/{id}/retry/` retry thu cong
+
+## 9) Luu y mapping nguon
 
 Logic hien tai:
 - Uu tien map hostname dac biet (vd: `devworks.example` -> `devworks`)

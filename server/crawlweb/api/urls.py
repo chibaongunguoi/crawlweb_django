@@ -4,7 +4,8 @@ from .views import (
     getJobDetail, login, get_user, logout, register,
     user_profile, upload_cv, get_companies, update_company,
     user_applications, application_detail, company_applications,
-    user_favorites, delete_favorite, follow_count, change_password
+    user_favorites, delete_favorite, follow_count, change_password,
+    list_jobs, job_detail, job_filters
 )
 from .admin_views import (
     admin_stats, admin_get_users, admin_delete_user,
@@ -17,12 +18,16 @@ from .admin_views import (
 )
 from .scrape_views import (
     scrape_upload, scrape_progress, scrape_result,
-    scrape_status, scrape_jobs, scrape_delete_job
+    scrape_status, scrape_jobs, scrape_delete_job,
+    scrape_retry_job, scrape_schedules, scrape_schedule_detail, scrape_schedule_toggle
 )
 
 urlpatterns = [
     # path("", include("rest_framework.urls")),
     path("jobs/", getJobDetail, name="recent_jobs"),
+    path("jobs/search/", list_jobs, name="jobs_search"),
+    path("jobs/filters/", job_filters, name="jobs_filters"),
+    path("jobs/<str:job_id>/", job_detail, name="job_detail"),
     path("jobs/-count/", follow_count, name="follow_count"),
     path("jobDetail/", getJobDetail, name="jobDetail"),
     path("auth/login/", login, name="login"),
@@ -76,4 +81,8 @@ urlpatterns = [
     path("scrape/status/<str:job_id>/", scrape_status, name="scrape_status"),
     path("scrape/jobs/", scrape_jobs, name="scrape_jobs"),
     path("scrape/jobs/<str:job_id>/", scrape_delete_job, name="scrape_delete_job"),
+    path("scrape/jobs/<str:job_id>/retry/", scrape_retry_job, name="scrape_retry_job"),
+    path("scrape/schedules/", scrape_schedules, name="scrape_schedules"),
+    path("scrape/schedules/<str:schedule_id>/", scrape_schedule_detail, name="scrape_schedule_detail"),
+    path("scrape/schedules/<str:schedule_id>/toggle/", scrape_schedule_toggle, name="scrape_schedule_toggle"),
 ]

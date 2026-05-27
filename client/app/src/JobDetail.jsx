@@ -15,6 +15,15 @@ export default function JobDetail() {
   const { id: jobId } = useParams();
 
   const sourceLabel = job?.source || 'unknown';
+  const deadlineValue = job?.deadline;
+  const isExpired = job?.isExpired;
+  const daysLeft = job?.daysLeft;
+  const deadlineStatusLabel = isExpired === null || isExpired === undefined
+    ? 'Chưa rõ hạn'
+    : (isExpired ? 'Hết hạn nộp' : 'Còn hạn');
+  const deadlineBadgeClass = isExpired === null || isExpired === undefined
+    ? 'deadline-unknown'
+    : (isExpired ? 'deadline-expired' : 'deadline-active');
 
   // Xử lý follow/unfollow
   async function handleFollow() { 
@@ -227,23 +236,31 @@ export default function JobDetail() {
   const fetchJobDetail = async (id) => {
     try {
       setLoading(true);
-      const response = await fetch("http://localhost:8000/api/jobDetail/", {
+      const response = await fetch(`http://localhost:8000/api/jobs/${id}/`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
         },
       });
-      
+
       if (response.ok) {
         const data = await response.json();
-        const foundJob = data.data?.find(job => job._id === id);
-        setJob(foundJob || null);
+        setJob(data.item || null);
       }
     } catch (error) {
       console.error('Error fetching job detail:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const formatDeadline = (value) => {
+    if (!value) return 'Chưa rõ';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+    return parsed.toLocaleDateString('vi-VN');
   };
 
   if (loading) {
@@ -295,6 +312,12 @@ export default function JobDetail() {
             <h1 className="job-title-large">{job.job_title || job.company_name}</h1>
             <h2 className="company-name">{job.company_name}</h2>
             <div className="job-source-detail">Nguồn: {sourceLabel}</div>
+            <div className={`deadline-badge ${deadlineBadgeClass}`}>
+              {deadlineStatusLabel}
+              {daysLeft !== null && daysLeft !== undefined && !isExpired && (
+                <span className="deadline-days">• {daysLeft} ngày</span>
+              )}
+            </div>
             <div className="job-meta">
               <span className="meta-item">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="meta-icon">
@@ -308,6 +331,12 @@ export default function JobDetail() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
                 </svg>
                 {job.salary}
+              </span>
+              <span className="meta-item">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="meta-icon">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Hạn nộp: {formatDeadline(deadlineValue)}
               </span>
             </div>
           </div>

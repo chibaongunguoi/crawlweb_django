@@ -79,6 +79,12 @@ class JobDetail(models.Model):
         null=True,
         help_text="Mức lương"
     )
+    deadline = models.DateField(
+        blank=True,
+        null=True,
+        db_index=True,
+        help_text="Ngày hết hạn nộp hồ sơ"
+    )
     skills = ArrayField(
         base_field=models.CharField(max_length=100),
         blank=True,
@@ -336,7 +342,9 @@ class ScrapeJob(models.Model):
         max_length=20,
         choices=[
             ('pending', 'Pending'),
+            ('queued', 'Queued'),
             ('processing', 'Processing'),
+            ('retrying', 'Retrying'),
             ('completed', 'Completed'),
             ('failed', 'Failed'),
         ],
@@ -351,6 +359,23 @@ class ScrapeJob(models.Model):
         blank=True,
         null=True,
         help_text="Thông báo lỗi"
+    )
+    lastError = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Lỗi gần nhất"
+    )
+    retryCount = models.IntegerField(
+        default=0,
+        help_text="Số lần retry"
+    )
+    maxRetries = models.IntegerField(
+        default=3,
+        help_text="Giới hạn retry"
+    )
+    retryDelay = models.IntegerField(
+        default=30,
+        help_text="Delay retry (giây)"
     )
     metadata = models.JSONField(
         default=dict,
@@ -379,6 +404,16 @@ class ScrapeJob(models.Model):
         auto_now_add=True,
         help_text="Thời gian tạo"
     )
+    lastAttemptAt = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text="Lần chạy gần nhất"
+    )
+    nextRetryAt = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text="Thời gian retry tiếp theo"
+    )
     completedAt = models.DateTimeField(
         blank=True,
         null=True,
@@ -399,4 +434,75 @@ class ScrapeJob(models.Model):
             from bson import ObjectId
             self._id = str(ObjectId())
         super().save(*args, **kwargs)
+
+
+class ScrapeSchedule(models.Model):
+    name = models.CharField(
+        max_length=200,
+        blank=True,
+        null=True,
+        help_text="Tên lịch (tùy chọn)"
+    )
+    urls = models.JSONField(
+        default=list,
+        help_text="Danh sách URLs cần crawl"
+    )
+    scheduleType = models.CharField(
+        max_length=20,
+        choices=[
+            ('daily', 'Daily'),
+            ('weekly', 'Weekly'),
+            ('cron', 'Cron'),
+        ],
+        default='weekly',
+        help_text="Loại lịch chạy"
+    )
+    dayOfWeek = models.IntegerField(
+        blank=True,
+        null=True,
+        help_text="Thứ trong tuần (0=Mon, 6=Sun)"
+    )
+    timeOfDay = models.CharField(
+        max_length=5,
+        default='09:00',
+        help_text="Giờ chạy (HH:MM)"
+    )
+    cronExpression = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="Cron expression nếu dùng lịch cron"
+    )
+    active = models.BooleanField(
+        default=True,
+        help_text="Bật/tắt lịch"
+    )
+    lastRunAt = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text="Lần chạy gần nhất"
+    )
+    nextRunAt = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text="Lần chạy tiếp theo"
+    )
+    createdAt = models.DateTimeField(
+        auto_now_add=True,
+        help_text="Thời gian tạo"
+    )
+    updatedAt = models.DateTimeField(
+        auto_now=True,
+        help_text="Thời gian cập nhật"
+    )
+
+    class Meta:
+        db_table = 'ScrapeSchedule'
+        verbose_name = 'Scrape Schedule'
+        verbose_name_plural = 'Scrape Schedules'
+        ordering = ['-createdAt']
+
+    def __str__(self):
+        label = self.name or 'Schedule'
+        return f"{label} ({self.scheduleType})"
 
