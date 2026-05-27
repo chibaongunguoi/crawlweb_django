@@ -104,16 +104,23 @@ def login(request):
         }, status=status.HTTP_200_OK)
 
         # Set httpOnly cookie
-        response.set_cookie(
-            key='auth',
-            value=token,
-            httponly=True,
-            secure=False,  # Set to True in production with HTTPS
-            samesite='Lax',
-            max_age=36000,  # 10 hours
-            path='/',
-            domain='localhost'  # Explicit domain
-        )
+        cookie_domain = request.get_host().split(':')[0]
+        if cookie_domain in {'localhost', '127.0.0.1'}:
+            cookie_domain = None
+
+        cookie_kwargs = {
+            'key': 'auth',
+            'value': token,
+            'httponly': True,
+            'secure': False,  # Set to True in production with HTTPS
+            'samesite': 'Lax',
+            'max_age': 36000,  # 10 hours
+            'path': '/',
+        }
+        if cookie_domain:
+            cookie_kwargs['domain'] = cookie_domain
+
+        response.set_cookie(**cookie_kwargs)
         
         logger.info(f"Cookie set for user: {username}")
 
