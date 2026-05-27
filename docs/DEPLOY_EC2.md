@@ -330,8 +330,8 @@ mongorestore --db=pbl4_db /path/to/backup/pbl4_db
 ### 7.4. Load dữ liệu mẫu (nếu database trống)
 
 ```bash
-cd /opt/crawlweb/server
-source myworld/bin/activate
+cd /opt/crawlweb/server/crawlweb
+source ../myworld/bin/activate
 python manage.py shell < load_test_data.py
 deactivate
 ```
@@ -456,8 +456,8 @@ top -o %MEM
 ### 9.5. Chạy Django management commands
 
 ```bash
-cd /opt/crawlweb/server
-source myworld/bin/activate
+cd /opt/crawlweb/server/crawlweb
+source ../myworld/bin/activate
 
 # Django shell
 python manage.py shell
@@ -512,20 +512,25 @@ cd /opt/crawlweb
 git pull origin master
 
 # Backend
-cd server
+cd /opt/crawlweb/server
 source myworld/bin/activate
 pip install -r requirements.txt
+deactivate
+
+# Backend - Django commands (manage.py ở trong server/crawlweb/)
+cd /opt/crawlweb/server/crawlweb
+source ../myworld/bin/activate
 python manage.py collectstatic --noinput
 deactivate
 
 # Scraper
-cd scraper
+cd /opt/crawlweb/server/scraper
 source venv/bin/activate
 pip install -r requirements.txt
 deactivate
 
 # Frontend
-cd ../../client/app
+cd /opt/crawlweb/client/app
 npm install
 # Thay thế localhost URLs nếu cần
 find src -name "*.jsx" -exec sed -i 's|http://localhost:8000||g' {} +
@@ -540,8 +545,8 @@ sudo systemctl reload nginx
 ### Nếu có thay đổi MongoDB schema (migration):
 
 ```bash
-cd /opt/crawlweb/server
-source myworld/bin/activate
+cd /opt/crawlweb/server/crawlweb
+source ../myworld/bin/activate
 # django_mongodb_backend không dùng migration như SQL
 # Nếu cần migrate:
 python manage.py migrate
@@ -564,9 +569,9 @@ cd /opt/crawlweb
 git checkout $(cat /tmp/crawlweb_last_commit)
 
 # Rebuild
-cd server && source myworld/bin/activate && pip install -r requirements.txt && deactivate
-cd ../scraper && source venv/bin/activate && pip install -r requirements.txt && deactivate
-cd ../../client/app && npm install && npm run build
+cd /opt/crawlweb/server && source myworld/bin/activate && pip install -r requirements.txt && deactivate
+cd /opt/crawlweb/server/scraper && source venv/bin/activate && pip install -r requirements.txt && deactivate
+cd /opt/crawlweb/client/app && npm install && npm run build
 
 # Restart
 sudo systemctl restart crawlweb-backend crawlweb-scraper nginx
@@ -587,19 +592,19 @@ git log --oneline -10
 git checkout abc123def456
 
 # Rebuild backend
-cd server
+cd /opt/crawlweb/server
 source myworld/bin/activate
 pip install -r requirements.txt
 deactivate
 
 # Rebuild scraper
-cd scraper
+cd /opt/crawlweb/server/scraper
 source venv/bin/activate
 pip install -r requirements.txt
 deactivate
 
 # Rebuild frontend
-cd ../../client/app
+cd /opt/crawlweb/client/app
 npm install
 npm run build
 
@@ -888,7 +893,7 @@ sudo systemctl reload nginx
 | Kiểm tra ports | `ss -tlnp` |
 | Test API | `curl http://localhost/api/jobs/search/` |
 | Edit settings | `nano /opt/crawlweb/server/crawlweb/crawlweb/settings.py` |
-| Django shell | `cd /opt/crawlweb/server && source myworld/bin/activate && python manage.py shell` |
+| Django shell | `cd /opt/crawlweb/server/crawlweb && source ../myworld/bin/activate && python manage.py shell` |
 | MongoDB shell | `mongosh` |
 | Kiểm tra disk | `df -h` |
 | Kiểm tra RAM | `free -h` |
@@ -908,18 +913,19 @@ sudo systemctl reload nginx
 ├── server/
 │   ├── myworld/                        # Python venv cho backend
 │   ├── requirements.txt
-│   ├── manage.py
-│   ├── load_test_data.py
-│   ├── staticfiles/                    # Django collected static files
-│   ├── media/                          # User uploads (CV files)
-│   ├── crawlweb/
-│   │   ├── settings.py                 # ⚡ Production config đã patch
-│   │   ├── wsgi.py
-│   │   └── urls.py
-│   ├── api/
-│   │   ├── models.py
-│   │   ├── views.py
-│   │   └── ...
+│   └── crawlweb/                       # ⚡ Django project root (manage.py ở đây)
+│       ├── manage.py
+│       ├── load_test_data.py
+│       ├── staticfiles/                # Django collected static files
+│       ├── media/                      # User uploads (CV files)
+│       ├── crawlweb/
+│       │   ├── settings.py             # ⚡ Production config đã patch
+│       │   ├── wsgi.py
+│       │   └── urls.py
+│       └── api/
+│           ├── models.py
+│           ├── views.py
+│           └── ...
 │   └── scraper/
 │       ├── venv/                       # Python venv cho scraper
 │       ├── requirements.txt

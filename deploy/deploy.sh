@@ -194,8 +194,9 @@ pip install -r requirements.txt
 # Install production server
 pip install gunicorn
 
-# Collect static files
+# Collect static files (manage.py is in server/crawlweb/)
 log "Running collectstatic..."
+cd "${PROJECT_DIR}/server/crawlweb"
 python manage.py collectstatic --noinput
 
 # Load test data if database is empty
@@ -260,7 +261,7 @@ Requires=mongod.service
 Type=notify
 User=root
 Group=root
-WorkingDirectory=${PROJECT_DIR}/server
+WorkingDirectory=${PROJECT_DIR}/server/crawlweb
 Environment="PATH=${PROJECT_DIR}/server/myworld/bin"
 Environment="DJANGO_SETTINGS_MODULE=crawlweb.settings"
 ExecStart=${PROJECT_DIR}/server/myworld/bin/gunicorn \\
@@ -325,16 +326,16 @@ server {
         proxy_connect_timeout 10s;
     }
 
-    # Django static files
+    # Django static files (collected to server/crawlweb/staticfiles/)
     location /static/ {
-        alias ${PROJECT_DIR}/server/staticfiles/;
+        alias ${PROJECT_DIR}/server/crawlweb/staticfiles/;
         expires 30d;
         add_header Cache-Control "public, immutable";
     }
 
     # Django media files (CV uploads etc.)
     location /media/ {
-        alias ${PROJECT_DIR}/server/media/;
+        alias ${PROJECT_DIR}/server/crawlweb/media/;
         expires 7d;
     }
 

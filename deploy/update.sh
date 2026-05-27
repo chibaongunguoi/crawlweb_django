@@ -91,6 +91,7 @@ log "Step 4/5: Django collectstatic..."
 
 cd "${PROJECT_DIR}/server"
 source myworld/bin/activate
+cd "${PROJECT_DIR}/server/crawlweb"
 python manage.py collectstatic --noinput 2>/dev/null || warn "collectstatic skipped (may not be configured)"
 deactivate
 
