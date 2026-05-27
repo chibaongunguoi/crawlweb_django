@@ -23,7 +23,7 @@ set -euo pipefail
 # ----------------------- Configuration -----------------------
 PROJECT_DIR="/opt/crawlweb"
 REPO_URL="https://github.com/chibaongunguoi/crawlweb_django.git"
-BRANCH="master"
+BRANCH="linux"
 DOMAIN="itjobs.ddns.net"
 DJANGO_PORT=8000
 SCRAPER_PORT=37001
