@@ -1,9 +1,12 @@
+# Django Backend Dependencies
+django>=5.0,<7.0
+djangorestframework>=3.14
 django-mongodb-backend
 django-cors-headers
 bcrypt
 PyJWT
 requests
 pymongo
+
 # Scheduler (cron parsing)
 croniter
-# react-router-dom
