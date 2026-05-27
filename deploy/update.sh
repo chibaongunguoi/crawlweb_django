@@ -39,21 +39,39 @@ fi
 
 cd "${PROJECT_DIR}"
 
+# Keep git metadata writable by the normal SSH user.
+# This fixes: error: cannot open '.git/FETCH_HEAD': Permission denied
+REAL_USER="${SUDO_USER:-ubuntu}"
+if id "${REAL_USER}" &>/dev/null; then
+    chown -R "${REAL_USER}:${REAL_USER}" "${PROJECT_DIR}/.git" 2>/dev/null || true
+    log "Fixed .git ownership for user: ${REAL_USER}"
+else
+    warn "User ${REAL_USER} not found; git commands will run as root."
+fi
+
+run_as_real_user() {
+    if id "${REAL_USER}" &>/dev/null; then
+        sudo -u "${REAL_USER}" -H "$@"
+    else
+        "$@"
+    fi
+}
+
 # ============================================================
 # STEP 1: Pull latest code
 # ============================================================
 log "Step 1/5: Pulling latest code from GitHub..."
 
 # Save current commit for rollback reference
-CURRENT_COMMIT=$(git rev-parse HEAD)
+CURRENT_COMMIT=$(run_as_real_user git rev-parse HEAD)
 echo "${CURRENT_COMMIT}" > /tmp/crawlweb_last_commit
 log "Current commit: ${CURRENT_COMMIT} (saved for rollback)"
 
-git fetch origin
-git checkout "${BRANCH}"
-git pull origin "${BRANCH}"
+run_as_real_user git fetch origin
+run_as_real_user git checkout "${BRANCH}"
+run_as_real_user git pull origin "${BRANCH}"
 
-NEW_COMMIT=$(git rev-parse HEAD)
+NEW_COMMIT=$(run_as_real_user git rev-parse HEAD)
 log "Updated to commit: ${NEW_COMMIT}"
 
 # ============================================================
@@ -129,6 +147,11 @@ if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1 | grep -q "200"; then
     log "✅ Site is accessible at http://${DOMAIN}"
 else
     warn "Site may need a moment. Check: curl http://127.0.0.1"
+fi
+
+# Keep repo usable for future manual git pull by ubuntu user
+if id "${REAL_USER}" &>/dev/null; then
+    chown -R "${REAL_USER}:${REAL_USER}" "${PROJECT_DIR}/.git" 2>/dev/null || true
 fi
 
 log "Done!"
