@@ -307,10 +307,9 @@ User=root
 Group=root
 WorkingDirectory=${PROJECT_DIR}/server/scraper
 Environment="PATH=${PROJECT_DIR}/server/scraper/venv/bin"
-ExecStart=${PROJECT_DIR}/server/scraper/venv/bin/python -m uvicorn \\
-    src.main:app \\
-    --host 127.0.0.1 \\
-    --port ${SCRAPER_PORT}
+Environment="SCRAPER_HOST=127.0.0.1"
+Environment="SCRAPER_PORT=${SCRAPER_PORT}"
+ExecStart=${PROJECT_DIR}/server/scraper/venv/bin/python main.py
 Restart=always
 RestartSec=5
 
