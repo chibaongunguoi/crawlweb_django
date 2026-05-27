@@ -72,7 +72,8 @@
 Browser → Nginx:80 (itjobs.ddns.net)
   ├── /api/*      → proxy_pass → Gunicorn:8000 (Django)
   ├── /admin/*    → proxy_pass → Gunicorn:8000 (Django Admin)
-  ├── /static/*   → serve file từ staticfiles/
+  ├── /static/*   → serve React build/static/
+  ├── /backend-static/* → serve Django staticfiles/ (nếu cần)
   ├── /media/*    → serve file từ media/
   └── /*          → serve React build/index.html (SPA)
 

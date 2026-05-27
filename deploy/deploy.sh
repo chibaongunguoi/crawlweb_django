@@ -326,8 +326,15 @@ server {
         proxy_connect_timeout 10s;
     }
 
-    # Django static files (collected to server/crawlweb/staticfiles/)
+    # React build static assets
     location /static/ {
+        alias ${PROJECT_DIR}/client/app/build/static/;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Django static files (if needed)
+    location /backend-static/ {
         alias ${PROJECT_DIR}/server/crawlweb/staticfiles/;
         expires 30d;
         add_header Cache-Control "public, immutable";
