@@ -21,7 +21,7 @@ export default function EditUserProfileForm({ userId, onSave, onCancel }) {
   const fetchUserData = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/admin/users/${userId}/`, {
+      const response = await fetch(`/api/admin/users/${userId}/`, {
         credentials: 'include'
       });
 
@@ -44,7 +44,7 @@ export default function EditUserProfileForm({ userId, onSave, onCancel }) {
     setSaving(true);
 
     try {
-      const response = await fetch(`http://localhost:8000/api/admin/users/${userId}/`, {
+      const response = await fetch(`/api/admin/users/${userId}/`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

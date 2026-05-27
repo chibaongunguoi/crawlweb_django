@@ -32,7 +32,7 @@ export default function JobManager() {
   const fetchJobs = async () => {
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/admin/jobs/', {
+      const response = await fetch('/api/admin/jobs/', {
         credentials: 'include'
       });
       
@@ -63,7 +63,7 @@ export default function JobManager() {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/admin/jobs/${jobId}/`, {
+      const response = await fetch(`/api/admin/jobs/${jobId}/`, {
         method: 'DELETE',
         credentials: 'include'
       });

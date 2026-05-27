@@ -37,21 +37,8 @@ export default function Home() {
 
   const fetchJobsAndFollowCounts = async () => {
     try {
-      const params = new URLSearchParams();
-      if (queryText) {
-        params.append("q", queryText);
-      }
-      if (selectedSkill) {
-        params.append("skill", selectedSkill);
-      }
-      if (selectedCity) {
-        params.append("city", selectedCity);
-      }
-
-      params.append("page", String(currentPage));
-      params.append("pageSize", String(jobsPerPage));
-
-      const jobsResponse = await fetch(`http://localhost:8000/api/jobs/search/?${params.toString()}`);
+      // Fetch jobs
+      const jobsResponse = await fetch("/api/jobs/");
       const jobsData = await jobsResponse.json();
 
       if (jobsResponse.ok) {
