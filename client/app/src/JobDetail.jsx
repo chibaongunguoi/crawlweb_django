@@ -234,9 +234,15 @@ export default function JobDetail() {
   }, [job]);
 
   const fetchJobDetail = async (id) => {
+    if (!id) {
+      setJob(null);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
-      const response = await fetch("/api/jobDetail/", {
+      const response = await fetch(`/api/jobs/${id}/`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -246,9 +252,20 @@ export default function JobDetail() {
       if (response.ok) {
         const data = await response.json();
         setJob(data.item || null);
+        return;
       }
+
+      if (response.status === 404) {
+        setJob(null);
+        return;
+      }
+
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Error fetching job detail:', errorData);
+      setJob(null);
     } catch (error) {
       console.error('Error fetching job detail:', error);
+      setJob(null);
     } finally {
       setLoading(false);
     }

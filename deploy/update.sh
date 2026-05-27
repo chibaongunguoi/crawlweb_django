@@ -39,12 +39,12 @@ fi
 
 cd "${PROJECT_DIR}"
 
-# Keep git metadata writable by the normal SSH user.
-# This fixes: error: cannot open '.git/FETCH_HEAD': Permission denied
+# Keep repo writable by the normal SSH user.
+# This fixes: error: unable to unlink old '<file>': Permission denied
 REAL_USER="${SUDO_USER:-ubuntu}"
 if id "${REAL_USER}" &>/dev/null; then
-    chown -R "${REAL_USER}:${REAL_USER}" "${PROJECT_DIR}/.git" 2>/dev/null || true
-    log "Fixed .git ownership for user: ${REAL_USER}"
+    chown -R "${REAL_USER}:${REAL_USER}" "${PROJECT_DIR}" 2>/dev/null || true
+    log "Fixed repo ownership for user: ${REAL_USER}"
 else
     warn "User ${REAL_USER} not found; git commands will run as root."
 fi
@@ -151,7 +151,7 @@ fi
 
 # Keep repo usable for future manual git pull by ubuntu user
 if id "${REAL_USER}" &>/dev/null; then
-    chown -R "${REAL_USER}:${REAL_USER}" "${PROJECT_DIR}/.git" 2>/dev/null || true
+    chown -R "${REAL_USER}:${REAL_USER}" "${PROJECT_DIR}" 2>/dev/null || true
 fi
 
 log "Done!"
