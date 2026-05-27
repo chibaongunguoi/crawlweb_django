@@ -509,7 +509,7 @@ sudo ./deploy/update.sh
 cd /opt/crawlweb
 
 # Pull code mới
-git pull origin main
+git pull origin master
 
 # Backend
 cd server
@@ -571,8 +571,8 @@ cd ../../client/app && npm install && npm run build
 # Restart
 sudo systemctl restart crawlweb-backend crawlweb-scraper nginx
 
-# Quay về main khi đã sẵn sàng
-cd /opt/crawlweb && git checkout main
+# Quay về master khi đã sẵn sàng
+cd /opt/crawlweb && git checkout master
 ```
 
 ### Cách thủ công:
@@ -610,7 +610,7 @@ sudo systemctl reload nginx
 
 # Quay về branch chính khi đã sẵn sàng
 cd /opt/crawlweb
-git checkout main
+git checkout master
 ```
 
 ---

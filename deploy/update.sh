@@ -17,7 +17,7 @@
 set -euo pipefail
 
 PROJECT_DIR="/opt/crawlweb"
-BRANCH="main"
+BRANCH="master"
 DOMAIN="itjobs.ddns.net"
 
 RED='\033[0;31m'
