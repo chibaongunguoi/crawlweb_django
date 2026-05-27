@@ -43,7 +43,7 @@ export default function CompanyManager() {
   const fetchCompanies = async () => {
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/admin/companies-list/', {
+      const response = await fetch('/api/admin/companies-list/', {
         credentials: 'include'
       });
       
@@ -74,7 +74,7 @@ export default function CompanyManager() {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/admin/companies-list/${companyId}/`, {
+      const response = await fetch(`/api/admin/companies-list/${companyId}/`, {
         method: 'DELETE',
         credentials: 'include'
       });
@@ -101,7 +101,7 @@ export default function CompanyManager() {
     }
 
     try {
-      const response = await fetch('http://localhost:8000/api/admin/companies-list/', {
+      const response = await fetch('/api/admin/companies-list/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -15,7 +15,7 @@ export default function Header() {
   const fetchUser = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/auth/user/', {
+      const response = await fetch('/api/auth/user/', {
         method: 'GET',
         credentials: 'include',
       });
@@ -123,7 +123,7 @@ export default function Header() {
 
   async function logOut() {
     try {
-      await fetch("http://localhost:8000/api/auth/logout/", {
+      await fetch("/api/auth/logout/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

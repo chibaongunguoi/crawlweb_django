@@ -32,7 +32,7 @@ export default function JobsOverTimeChart({ timeRange, filters, onDrilldown }) {
           to: timeRange?.to,
           interval: filters?.interval || "day",
         });
-        const response = await fetch(`http://localhost:8000/api/admin/stats/jobs-over-time/?${query}`, {
+        const response = await fetch(`/api/admin/stats/jobs-over-time/?${query}`, {
           credentials: "include",
         });
         const data = await response.json();

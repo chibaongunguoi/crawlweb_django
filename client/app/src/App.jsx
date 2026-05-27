@@ -37,27 +37,29 @@ export default function Home() {
 
   const fetchJobsAndFollowCounts = async () => {
     try {
-      const params = new URLSearchParams();
-      if (queryText) {
-        params.append("q", queryText);
-      }
-      if (selectedSkill) {
-        params.append("skill", selectedSkill);
-      }
-      if (selectedCity) {
-        params.append("city", selectedCity);
-      }
-
-      params.append("page", String(currentPage));
-      params.append("pageSize", String(jobsPerPage));
-
-      const jobsResponse = await fetch(`http://localhost:8000/api/jobs/search/?${params.toString()}`);
+      // Fetch jobs
+      const jobsResponse = await fetch("/api/jobs/");
       const jobsData = await jobsResponse.json();
 
       if (jobsResponse.ok) {
-        setJobs(jobsData.items || []);
-        setTotalJobs(jobsData.total || 0);
-        setTotalPages(jobsData.totalPages || 0);
+        const rawItems = jobsData.items || jobsData.data || jobsData || [];
+        const items = Array.isArray(rawItems) ? rawItems : [];
+        const sortedItems = [...items].sort((a, b) => {
+          const aTime = a?.collected_at ? Date.parse(a.collected_at) : 0;
+          const bTime = b?.collected_at ? Date.parse(b.collected_at) : 0;
+          const safeATime = Number.isNaN(aTime) ? 0 : aTime;
+          const safeBTime = Number.isNaN(bTime) ? 0 : bTime;
+          return safeBTime - safeATime;
+        });
+        const total = jobsData.total || sortedItems.length;
+        const pages = total > 0 ? Math.ceil(total / jobsPerPage) : 0;
+
+        setJobs(sortedItems);
+        setTotalJobs(total);
+        setTotalPages(pages);
+        if (pages > 0 && currentPage > pages) {
+          setCurrentPage(pages);
+        }
       }
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -86,6 +88,9 @@ export default function Home() {
     navigate(`/job/${jobId}`);
   };
 
+  const startIndex = (currentPage - 1) * jobsPerPage;
+  const currentJobs = jobs.slice(startIndex, startIndex + jobsPerPage);
+
   return (
     <div className="home-container">
       {/* Carousel Section */}
@@ -103,7 +108,7 @@ export default function Home() {
 
       {/* Job Cards Grid */}
       <div className="jobs-grid">
-        {jobs.map((job) => (
+        {currentJobs.map((job) => (
           <JobCard
             key={job._id}
             job={job}
@@ -115,7 +120,7 @@ export default function Home() {
         ))}
       </div>
 
-      {jobs.length === 0 && (
+      {currentJobs.length === 0 && (
         <div className="header-section">
           <p>Không có công việc nào khớp với điều kiện tìm kiếm.</p>
         </div>

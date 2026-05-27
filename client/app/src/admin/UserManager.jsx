@@ -20,7 +20,7 @@ export default function UserManager() {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/admin/users/', {
+      const response = await fetch('/api/admin/users/', {
         credentials: 'include'
       });
       
@@ -76,7 +76,7 @@ export default function UserManager() {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/admin/users/${userId}/`, {
+      const response = await fetch(`/api/admin/users/${userId}/`, {
         method: 'DELETE',
         credentials: 'include'
       });

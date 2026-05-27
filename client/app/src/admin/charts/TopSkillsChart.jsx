@@ -29,7 +29,7 @@ export default function TopSkillsChart({ timeRange, filters, onDrilldown }) {
           to: timeRange?.to,
           limit: filters?.limit || 15,
         });
-        const response = await fetch(`http://localhost:8000/api/admin/stats/top-skills/?${query}`, {
+        const response = await fetch(`/api/admin/stats/top-skills/?${query}`, {
           credentials: "include",
         });
         const data = await response.json();

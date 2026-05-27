@@ -21,7 +21,7 @@ export default function AdminDashboard() {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/admin/stats/', {
+      const response = await fetch('/api/admin/stats/', {
         credentials: 'include'
       });
       
