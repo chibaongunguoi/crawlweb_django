@@ -130,16 +130,41 @@ fi
 # ============================================================
 log "Step 4/8: Setting up project..."
 
+REAL_USER="${SUDO_USER:-ubuntu}"
+
+run_as_real_user() {
+    if id "${REAL_USER}" &>/dev/null; then
+        sudo -u "${REAL_USER}" -H "$@"
+    else
+        "$@"
+    fi
+}
+
 if [[ -d "${PROJECT_DIR}/.git" ]]; then
     log "Project already exists, pulling latest..."
     cd "${PROJECT_DIR}"
-    git fetch origin
-    git checkout "${BRANCH}"
-    git pull origin "${BRANCH}"
+
+    # Keep git metadata writable by the normal SSH user.
+    # This fixes: error: cannot open '.git/FETCH_HEAD': Permission denied
+    if id "${REAL_USER}" &>/dev/null; then
+        chown -R "${REAL_USER}:${REAL_USER}" "${PROJECT_DIR}/.git" 2>/dev/null || true
+        log "Fixed .git ownership for user: ${REAL_USER}"
+    fi
+
+    run_as_real_user git fetch origin
+    run_as_real_user git checkout "${BRANCH}"
+    run_as_real_user git pull origin "${BRANCH}"
 else
     log "Cloning project..."
     mkdir -p "$(dirname "${PROJECT_DIR}")"
-    git clone -b "${BRANCH}" "${REPO_URL}" "${PROJECT_DIR}"
+
+    if id "${REAL_USER}" &>/dev/null; then
+        chown "${REAL_USER}:${REAL_USER}" "$(dirname "${PROJECT_DIR}")" 2>/dev/null || true
+        run_as_real_user git clone -b "${BRANCH}" "${REPO_URL}" "${PROJECT_DIR}"
+    else
+        git clone -b "${BRANCH}" "${REPO_URL}" "${PROJECT_DIR}"
+    fi
+
     cd "${PROJECT_DIR}"
 fi
 
@@ -443,6 +468,17 @@ if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:${DJANGO_PORT}/api/jo
     log "✅ Backend API is responding."
 else
     warn "Backend may still be starting. Check: systemctl status crawlweb-backend"
+fi
+
+# ============================================================
+# Fix .git ownership so non-root user can git pull
+# ============================================================
+if id "${REAL_USER}" &>/dev/null; then
+    chown -R "${REAL_USER}:${REAL_USER}" "${PROJECT_DIR}/.git" 2>/dev/null || true
+    log "Fixed .git ownership for user: ${REAL_USER}"
+else
+    log "Tip: if you need git pull as non-root, run:"
+    log "  sudo chown -R \$(whoami):\$(whoami) ${PROJECT_DIR}/.git"
 fi
 
 log "Done! Open http://${DOMAIN} in your browser."
