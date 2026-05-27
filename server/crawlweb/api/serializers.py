@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import JobDetail, User, UserProfile, Company, Application, Follow, Notification
+from .job_utils import compute_deadline_status, strip_redundant_deadline_info
 import json
 
 
@@ -12,6 +13,8 @@ class UserSerializer(serializers.ModelSerializer):
 class JobDetailSerializer(serializers.ModelSerializer):
     id = serializers.CharField(read_only=True)
     skills = serializers.SerializerMethodField()
+    isExpired = serializers.SerializerMethodField()
+    daysLeft = serializers.SerializerMethodField()
     
     class Meta:
         model = JobDetail
@@ -25,6 +28,7 @@ class JobDetailSerializer(serializers.ModelSerializer):
             data['_id'] = str(data['id'])
         else:
             data['_id'] = str(instance.pk)
+        data['job_info'] = strip_redundant_deadline_info(data.get('job_info'))
         return data
     
     def get_skills(self, obj):
@@ -34,6 +38,14 @@ class JobDetailSerializer(serializers.ModelSerializer):
             except (json.JSONDecodeError, ValueError):
                 return []
         return obj.skills if obj.skills else []
+
+    def get_isExpired(self, obj):
+        is_expired, _ = compute_deadline_status(obj.deadline)
+        return is_expired
+
+    def get_daysLeft(self, obj):
+        _, days_left = compute_deadline_status(obj.deadline)
+        return days_left
 
 
 class UserProfileSerializer(serializers.ModelSerializer):

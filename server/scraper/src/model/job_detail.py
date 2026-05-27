@@ -15,6 +15,7 @@ class JobDetail:
         company_name=None,
         province=None,
         salary=None,
+        deadline=None,
         skills=None,
         descriptions=None,
         job_info=None,
@@ -27,6 +28,7 @@ class JobDetail:
 
         self.province = province
         self.salary = salary
+        self.deadline = deadline
         self.skills = skills
         self.descriptions = descriptions
         self.job_info = job_info
