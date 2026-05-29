@@ -3,6 +3,7 @@ import Home from './App';
 import LoginPage from './Login';
 import RegisterPage from './Register';
 import UserProfile from './UserProfile';
+import UserApplications from './UserApplications';
 import JobDetail from './JobDetail';
 import Header from './ui/layout/header';
 import Footer from './ui/layout/footer';
@@ -31,6 +32,7 @@ export default function AppRouter() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/user/profile" element={<UserProfile />} />
+          <Route path="/user/applications" element={<UserApplications />} />
           <Route path="/job/:id" element={<JobDetail />} />
           
           {/* Admin Routes */}
