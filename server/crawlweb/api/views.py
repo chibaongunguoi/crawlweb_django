@@ -789,9 +789,11 @@ def user_applications(request):
             
             for app in applications:
                 app_data = {
+                    'id': str(app.pk),
                     '_id': str(app.pk),
                     'userID': app.userID,
                     'JobDetailID': {},
+                    'job': {},
                     'status': app.status,
                     'time': app.time.isoformat(),
                     'content': app.content
@@ -800,13 +802,17 @@ def user_applications(request):
                 # Get job detail
                 try:
                     job = JobDetail.objects.get(pk=app.JobDetailID)
-                    app_data['JobDetailID'] = {
+                    job_data = {
+                        'id': str(job.pk),
                         '_id': str(job.pk),
                         'job_title': job.job_title,
                         'company_name': job.company_name,
                         'province': job.province,
-                        'salary': job.salary
+                        'salary': job.salary,
+                        'thumbnail': getattr(job, 'thumbnail', None),
                     }
+                    app_data['JobDetailID'] = job_data
+                    app_data['job'] = job_data
                 except JobDetail.DoesNotExist:
                     pass
                 
