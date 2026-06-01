@@ -789,9 +789,11 @@ def user_applications(request):
             
             for app in applications:
                 app_data = {
+                    'id': str(app.pk),
                     '_id': str(app.pk),
                     'userID': app.userID,
                     'JobDetailID': {},
+                    'job': {},
                     'status': app.status,
                     'time': app.time.isoformat(),
                     'content': app.content
@@ -800,19 +802,23 @@ def user_applications(request):
                 # Get job detail
                 try:
                     job = JobDetail.objects.get(pk=app.JobDetailID)
-                    app_data['JobDetailID'] = {
+                    job_data = {
+                        'id': str(job.pk),
                         '_id': str(job.pk),
                         'job_title': job.job_title,
                         'company_name': job.company_name,
                         'province': job.province,
-                        'salary': job.salary
+                        'salary': job.salary,
+                        'thumbnail': getattr(job, 'thumbnail', None),
                     }
+                    app_data['JobDetailID'] = job_data
+                    app_data['job'] = job_data
                 except JobDetail.DoesNotExist:
                     pass
                 
                 result.append(app_data)
             
-            return Response({'success': True, 'data': result}, status=status.HTTP_200_OK)
+            return Response({'success': True, 'data': result, 'applications': result}, status=status.HTTP_200_OK)
         except Exception as e:
             logger.error(f"Get applications error: {e}")
             return Response({'error': 'Lỗi khi lấy danh sách ứng tuyển'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -856,8 +862,14 @@ def application_detail(request, application_id):
             return Response({'error': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
         
         if request.method == 'DELETE':
+            if user.role != 'user' or application.userID != user.username:
+                return Response({'error': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
+
+            if application.status in ['đã duyệt', 'đã từ chối']:
+                return Response({'error': 'Không thể rút đơn ứng tuyển đã được xử lý'}, status=status.HTTP_400_BAD_REQUEST)
+
             application.delete()
-            return Response({'success': True, 'message': 'Đã xóa đơn ứng tuyển'}, status=status.HTTP_200_OK)
+            return Response({'success': True, 'message': 'Đã rút đơn ứng tuyển'}, status=status.HTTP_200_OK)
         
         elif request.method == 'PUT':
             # Company can update status

@@ -8,6 +8,7 @@ from .job_utils import (
     normalize_job_info_dates,
     strip_redundant_deadline_info,
 )
+from .job_url_utils import compute_url_hash, normalize_url
 from .scrape_queue import get_scrape_queue, compute_next_run
 from .models import ScrapeSchedule
 from datetime import datetime
@@ -245,9 +246,11 @@ def scrape_result(request):
             saved_count = 0
             for job_data in job_urls:
                 try:
-                    # Check if job already exists by URL
+                    # Check if job already exists by canonical URL hash.
                     url = job_data.get('url')
-                    if not url:
+                    normalized_url = normalize_url(url)
+                    url_hash = compute_url_hash(url)
+                    if not normalized_url or not url_hash:
                         continue
 
                     job_info = job_data.get('job_info')
@@ -259,11 +262,12 @@ def scrape_result(request):
                         raw_deadline = job_data.get('deadline')
                     deadline_value = parse_deadline_value(raw_deadline)
                         
-                    # Create or update JobDetail
+                    # Create or update JobDetail idempotently by canonical URL hash.
                     job_detail, created = JobDetail.objects.update_or_create(
-                        url=url,
+                        url_hash=url_hash,
                         defaults={
-                            'source': extract_source(url),
+                            'url': normalized_url,
+                            'source': extract_source(normalized_url),
                             'thumbnail': job_data.get('thumbnail'),
                             'job_title': job_data.get('job_title', ''),
                             'company_url': job_data.get('company_url'),
@@ -278,9 +282,9 @@ def scrape_result(request):
                     )
                     saved_count += 1
                     if created:
-                        logger.info(f"Created new job: {url}")
+                        logger.info(f"Created new job: {normalized_url}")
                     else:
-                        logger.info(f"Updated existing job: {url}")
+                        logger.info(f"Updated existing job: {normalized_url}")
                 except Exception as e:
                     logger.error(f"Error saving job {job_data.get('url')}: {str(e)}")
             
