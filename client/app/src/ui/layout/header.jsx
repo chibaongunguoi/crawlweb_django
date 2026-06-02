@@ -182,7 +182,7 @@ export default function Header() {
                         setShowNotifications(!showNotifications);
                       }}
                     >
-                      <i className="icon-bell"></i>
+                      {/* <i className="icon-bell"></i> */}
                       {unreadCount > 0 && (
                         <span className="notification-badge">{unreadCount}</span>
                       )}
@@ -245,11 +245,11 @@ export default function Header() {
                             Thông tin tài khoản
                           </Link>
                         </li>
-                        <li>
+                        {/* <li>
                           <Link to="/user/applications" className="">
                             Đơn ứng tuyển của tôi
                           </Link>
-                        </li>
+                        </li> */}
                       </>
                     )}
                     <li>

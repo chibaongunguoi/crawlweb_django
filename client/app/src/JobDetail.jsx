@@ -415,8 +415,8 @@ export default function JobDetail() {
             Xem trang gốc
           </button>
 
-          {/* Apply Button - only show if company exists in Company model */}
-          {companyExists && (
+        
+          {/* {companyExists && (
             <button 
               className="apply-button"
               onClick={handleApply}
@@ -444,7 +444,7 @@ export default function JobDetail() {
                 </>
               )}
             </button>
-          )}
+          )} */}
         </div>
       </div>
 

@@ -131,7 +131,7 @@ export default function AdminLayout() {
                 Quản lý công ty
               </button>
             </li>
-            <li>
+            {/* <li>
               <button
                 className={`admin-nav-link ${isActive('/admin/notifications') ? 'active' : ''}`}
                 onClick={() => navigate('/admin/notifications')}
@@ -141,7 +141,7 @@ export default function AdminLayout() {
                 </svg>
                 Quản lý thông báo
               </button>
-            </li>
+            </li> */}
             <li>
               <button
                 className={`admin-nav-link ${isActive('/admin/scrape') ? 'active' : ''}`}

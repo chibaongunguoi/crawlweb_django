@@ -488,7 +488,7 @@ export default function UserProfile() {
                 Thông tin cá nhân
               </button>
             </li>
-            <li>
+            {/* <li>
               <button
                 className={`nav-link ${activeTab === 'applications' ? 'active' : ''}`}
                 onClick={() => setActiveTab('applications')}
@@ -498,7 +498,7 @@ export default function UserProfile() {
                 </svg>
                 Danh sách ứng tuyển
               </button>
-            </li>
+            </li> */}
             <li>
               <button
                 className={`nav-link ${activeTab === 'favorites' ? 'active' : ''}`}
