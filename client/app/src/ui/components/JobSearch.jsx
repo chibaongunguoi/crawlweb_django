@@ -12,17 +12,6 @@ export default function JobSearch() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const REMOTE_WORDS = ["remote", "work from home", "wfh", "tu xa", "lam tu xa"];
-  const REMOTE_CONDENSED = ["remote", "workfromhome", "wfh", "tuxa", "lamtuxa"];
-  const HCM_WORDS = ["ho chi minh", "tp ho chi minh", "sai gon", "saigon"];
-  const HCM_CONDENSED = ["hochiminh", "tphochiminh", "hcm", "hcmc", "hcmm", "tphcm", "saigon"];
-  const HN_WORDS = ["ha noi", "tp ha noi", "hanoi"];
-  const HN_CONDENSED = ["hanoi", "tphanoi", "hn"];
-  const DN_WORDS = ["da nang", "tp da nang", "danang"];
-  const DN_CONDENSED = ["danang", "tpdanang", "dn"];
-  const OTHER_WORDS = ["khac", "other", "others"];
-  const OTHER_CONDENSED = ["khac", "other", "others"];
-
   useEffect(() => {
     fetchSkillsAndCities();
   }, []);
@@ -36,77 +25,74 @@ export default function JobSearch() {
 
   // Update skills when city is selected
   useEffect(() => {
-    if (selectedCity && allJobs.length > 0) {
-      // Filter jobs by selected city
-      const jobsInCity = allJobs.filter(job => {
-        const jobCity = getCanonicalCity(job.province, "Khác");
-        return jobCity === selectedCity;
-      });
+  if (selectedCity && allJobs.length > 0) {
+    const jobsInCity = allJobs.filter(
+      job => (job.province || "").trim() === selectedCity
+    );
 
-      // Extract skills from filtered jobs
-      const skillsInCity = new Set();
-      jobsInCity.forEach(job => {
-        (job.skills || []).forEach(s => {
-          const trimmed = s.trim();
-          if (trimmed) skillsInCity.add(trimmed);
-        });
-      });
+    const skillsInCity = new Set();
 
-      setSkills(Array.from(skillsInCity).sort());
-    } else if (!selectedCity && allJobs.length > 0) {
-      // Show all skills when no city selected
-      const allSkillsList = new Set();
-      allJobs.forEach(job => {
-        (job.skills || []).forEach(s => {
-          const trimmed = s.trim();
-          if (trimmed) allSkillsList.add(trimmed);
-        });
+    jobsInCity.forEach(job => {
+      (job.skills || []).forEach(skill => {
+        const trimmed = skill.trim();
+        if (trimmed) skillsInCity.add(trimmed);
       });
-      setSkills(Array.from(allSkillsList).sort());
-    }
-  }, [selectedCity, allJobs]);
+    });
+
+    setSkills(Array.from(skillsInCity).sort());
+  } else if (!selectedCity && allJobs.length > 0) {
+    const allSkillsList = new Set();
+
+    allJobs.forEach(job => {
+      (job.skills || []).forEach(skill => {
+        const trimmed = skill.trim();
+        if (trimmed) allSkillsList.add(trimmed);
+      });
+    });
+
+    setSkills(Array.from(allSkillsList).sort());
+  }
+}, [selectedCity, allJobs]);
 
   const fetchSkillsAndCities = async () => {
-    try {
-      const response = await fetch('/api/jobs/', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        const jobs = data.data || [];
-        setAllJobs(jobs);
+  try {
+    const response = await fetch('/api/jobs/', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
 
-        // Extract all skills
-        const skillsList = new Set();
-        const cityMap = new Map();
+    if (response.ok) {
+      const data = await response.json();
+      const jobs = data.data || [];
 
-        jobs.forEach((job) => {
-          // Add skills
-          (job.skills || []).forEach(skill => {
-            const trimmed = skill.trim();
-            if (trimmed) skillsList.add(trimmed);
-          });
+      setAllJobs(jobs);
 
-          // Add cities
-          if (job.province && job.province.trim()) {
-            const normalizedCity = getCanonicalCity(job.province.trim(), "Khác");
-            if (normalizedCity && !cityMap.has(normalizedCity.toLowerCase())) {
-              cityMap.set(normalizedCity.toLowerCase(), normalizedCity);
-            }
-          }
+      const skillsSet = new Set();
+      const citiesSet = new Set();
+
+      jobs.forEach(job => {
+        // Skills
+        (job.skills || []).forEach(skill => {
+          const trimmed = skill.trim();
+          if (trimmed) skillsSet.add(trimmed);
         });
 
-        setSkills(Array.from(skillsList).sort());
-        setCities(Array.from(cityMap.values()).sort());
-      }
-    } catch (error) {
-      console.error('Error fetching skills and cities:', error);
+        // Province
+        const province = (job.province || "").trim();
+        if (province) {
+          citiesSet.add(province);
+        }
+      });
+
+      setSkills(Array.from(skillsSet).sort());
+      setCities(Array.from(citiesSet).sort());
     }
-  };
+  } catch (error) {
+    console.error('Error fetching skills and cities:', error);
+  }
+};
 
   const normalizeLocationText = (value) => {
     if (!value) return "";
@@ -131,11 +117,6 @@ export default function JobSearch() {
     if (!text) return fallback;
     const condensed = condenseLocationText(text);
 
-    if (matchesLocation(text, condensed, REMOTE_WORDS, REMOTE_CONDENSED)) return "Remote";
-    if (matchesLocation(text, condensed, HCM_WORDS, HCM_CONDENSED)) return "Hồ Chí Minh";
-    if (matchesLocation(text, condensed, HN_WORDS, HN_CONDENSED)) return "Hà Nội";
-    if (matchesLocation(text, condensed, DN_WORDS, DN_CONDENSED)) return "Đà Nẵng";
-    if (matchesLocation(text, condensed, OTHER_WORDS, OTHER_CONDENSED)) return "Khác";
 
     return fallback;
   };

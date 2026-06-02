@@ -51,10 +51,34 @@ export default function Home() {
           const safeBTime = Number.isNaN(bTime) ? 0 : bTime;
           return safeBTime - safeATime;
         });
-        const total = jobsData.total || sortedItems.length;
+        const filteredJobs = sortedItems.filter((job) => {
+  const title = (job.job_title || "").toLowerCase();
+  const description = (job.job_description || "").toLowerCase();
+
+  const skills = (job.skills || []).map((s) => s.toLowerCase());
+
+  const city = (job.province || "").toLowerCase();
+
+  const matchQuery =
+    !queryText ||
+    title.includes(queryText) ||
+    description.includes(queryText);
+
+  const matchSkill =
+    !selectedSkill ||
+    skills.some((s) => s.includes(selectedSkill));
+
+  const matchCity =
+    !selectedCity ||
+    city.includes(selectedCity);
+
+  return matchQuery && matchSkill && matchCity;
+});
+        const total = jobsData.total || filteredJobs.length;
         const pages = total > 0 ? Math.ceil(total / jobsPerPage) : 0;
 
-        setJobs(sortedItems);
+
+        setJobs(filteredJobs);
         setTotalJobs(total);
         setTotalPages(pages);
         if (pages > 0 && currentPage > pages) {
