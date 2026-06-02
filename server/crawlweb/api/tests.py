@@ -3,8 +3,9 @@ from datetime import timedelta
 from django.test import TestCase
 from django.utils import timezone
 
-from .models import JobDetail
-from .scrape_queue import compute_retry_delay
+from .job_url_utils import compute_url_hash, normalize_url
+from .models import JobDetail, ScrapeJob, ScrapeSchedule
+from .scrape_queue import ScrapeQueueManager, compute_next_run, compute_retry_delay
 
 
 class JobApiTests(TestCase):
@@ -76,3 +77,166 @@ class JobApiTests(TestCase):
 	def test_retry_delay_logic(self):
 		self.assertEqual(compute_retry_delay(1, 30), 30)
 		self.assertEqual(compute_retry_delay(2, 30), 60)
+
+
+class ScrapeScheduleTests(TestCase):
+	def test_compute_next_run_daily(self):
+		now = timezone.make_aware(timezone.datetime(2026, 6, 2, 8, 30))
+		schedule = ScrapeSchedule(scheduleType='daily', timeOfDay='09:00')
+
+		next_run = compute_next_run(schedule, now)
+
+		self.assertIsNotNone(next_run)
+		assert next_run is not None
+		self.assertEqual(next_run.hour, 9)
+		self.assertEqual(next_run.minute, 0)
+		self.assertEqual(next_run.date(), now.date())
+
+	def test_compute_next_run_weekly(self):
+		now = timezone.make_aware(timezone.datetime(2026, 6, 2, 10, 0))
+		schedule = ScrapeSchedule(scheduleType='weekly', dayOfWeek=2, timeOfDay='09:15')
+
+		next_run = compute_next_run(schedule, now)
+
+		self.assertIsNotNone(next_run)
+		assert next_run is not None
+		self.assertEqual(next_run.weekday(), 2)
+		self.assertEqual(next_run.hour, 9)
+		self.assertEqual(next_run.minute, 15)
+
+	def test_compute_next_run_cron(self):
+		now = timezone.make_aware(timezone.datetime(2026, 6, 2, 10, 0))
+		schedule = ScrapeSchedule(scheduleType='cron', cronExpression='0 12 * * *')
+
+		next_run = compute_next_run(schedule, now)
+
+		self.assertIsNotNone(next_run)
+		assert next_run is not None
+		self.assertEqual(next_run.hour, 12)
+		self.assertEqual(next_run.minute, 0)
+
+	def test_create_schedule_rejects_invalid_itworks_host(self):
+		response = self.client.post(
+			'/api/scrape/schedules/',
+			data={
+				'name': 'Invalid host',
+				'source': 'itworks',
+				'crawlMode': 'crawl_then_scrape',
+				'urls': ['https://example.com/job/abc/'],
+				'scheduleType': 'daily',
+				'timeOfDay': '09:00',
+				'active': True,
+			},
+			content_type='application/json',
+		)
+
+		self.assertEqual(response.status_code, 400)
+
+	def test_create_schedule_accepts_valid_itworks_schedule(self):
+		response = self.client.post(
+			'/api/scrape/schedules/',
+			data={
+				'name': 'Itworks daily',
+				'source': 'itworks',
+				'crawlMode': 'crawl_then_scrape',
+				'urls': ['https://itworks.asia/job/'],
+				'scheduleType': 'daily',
+				'timeOfDay': '09:00',
+				'maxDetailUrls': 10,
+				'active': True,
+			},
+			content_type='application/json',
+		)
+
+		self.assertEqual(response.status_code, 201)
+		schedule = ScrapeSchedule.objects.get()
+		self.assertEqual(schedule.source, 'itworks')
+		self.assertEqual(schedule.crawlMode, 'crawl_then_scrape')
+		self.assertEqual(schedule.urls, ['https://itworks.asia/job/'])
+		self.assertIsNotNone(schedule.nextRunAt)
+
+	def test_due_schedule_creates_job_and_updates_next_run_once(self):
+		now = timezone.now()
+		schedule = ScrapeSchedule.objects.create(
+			name='Due itworks',
+			source='itworks',
+			crawlMode='crawl_then_scrape',
+			urls=['https://itworks.asia/job/'],
+			scheduleType='daily',
+			timeOfDay='09:00',
+			active=True,
+			nextRunAt=now - timedelta(minutes=1),
+		)
+		manager = ScrapeQueueManager()
+
+		manager.process_due_schedules(now)
+		manager.process_due_schedules(now)
+
+		self.assertEqual(ScrapeJob.objects.count(), 1)
+		job = ScrapeJob.objects.get()
+		self.assertEqual(job.metadata['scheduleId'], str(schedule.pk))
+		self.assertEqual(job.metadata['source'], 'itworks')
+		self.assertEqual(job.metadata['crawlMode'], 'crawl_then_scrape')
+
+		schedule.refresh_from_db()
+		self.assertIsNotNone(schedule.lastRunAt)
+		self.assertIsNotNone(schedule.nextRunAt)
+		assert schedule.nextRunAt is not None
+		self.assertGreater(schedule.nextRunAt, now)
+
+
+class ScrapeCallbackTests(TestCase):
+	def test_scrape_result_update_or_create_by_url_hash_and_updates_crawled_urls_metadata(self):
+		first_url = 'https://itworks.asia/job/python-developer/'
+		second_url = 'https://itworks.asia/job/python-developer/?utm_source=test'
+		normalized_url = normalize_url(first_url)
+		url_hash = compute_url_hash(first_url)
+		JobDetail.objects.create(
+			url=normalized_url,
+			url_hash=url_hash,
+			job_title='Old title',
+			province='Ha Noi',
+			company_name='Old Co',
+			skills=['Python'],
+		)
+		job = ScrapeJob.objects.create(
+			urls=['https://itworks.asia/job/'],
+			status='processing',
+			totalUrls=1,
+			processedUrls=0,
+			progress=0,
+			metadata={'jobId': 'placeholder'},
+		)
+
+		response = self.client.post(
+			'/api/scrape/result/',
+			data={
+				'status': 'success',
+				'metadata': {
+					'jobId': str(job.pk),
+					'crawledUrls': [first_url, second_url],
+					'detailUrls': [first_url, second_url],
+				},
+				'data': [
+					{
+						'url': second_url,
+						'job_title': 'New title',
+						'province': 'Ho Chi Minh',
+						'company_name': 'New Co',
+						'skills': ['Django'],
+					}
+				],
+			},
+			content_type='application/json',
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(JobDetail.objects.count(), 1)
+		detail = JobDetail.objects.get(url_hash=url_hash)
+		self.assertEqual(detail.job_title, 'New title')
+		self.assertEqual(detail.source, 'itworks')
+
+		job.refresh_from_db()
+		self.assertEqual(job.status, 'completed')
+		self.assertEqual(job.urls, [first_url, second_url])
+		self.assertEqual(job.metadata['detailUrls'], [first_url, second_url])

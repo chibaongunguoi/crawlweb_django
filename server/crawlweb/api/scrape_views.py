@@ -15,12 +15,122 @@ from datetime import datetime
 from django.utils import timezone
 import logging
 import os
+import re
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
 SCRAPE_MAX_RETRIES = int(os.getenv('SCRAPE_MAX_RETRIES', '3'))
 SCRAPE_RETRY_DELAY = int(os.getenv('SCRAPE_RETRY_DELAY', '30'))
+
+ITWORKS_ALLOWED_HOSTS = {'itworks.asia', 'www.itworks.asia', 'itwork.asia', 'www.itwork.asia'}
+DEFAULT_ITWORKS_SEED_URL = 'https://itworks.asia/job/'
+
+
+def _normalize_schedule_urls(urls, source='manual'):
+    if not urls:
+        urls = [DEFAULT_ITWORKS_SEED_URL] if source == 'itworks' else []
+    if not isinstance(urls, list):
+        return []
+    return [str(url).strip() for url in urls if str(url).strip()]
+
+
+def _validate_itworks_urls(urls):
+    for url in urls:
+        parsed = urlparse(url)
+        if not parsed.scheme or not parsed.hostname:
+            parsed = urlparse(f'https://{url.lstrip("/")}')
+        if (parsed.hostname or '').lower() not in ITWORKS_ALLOWED_HOSTS:
+            return False
+    return True
+
+
+def _validate_schedule_payload(payload, partial=False):
+    source = (payload.get('source') or ('manual' if partial else 'itworks')).strip().lower()
+    crawl_mode = (payload.get('crawlMode') or ('detail_urls' if partial else 'crawl_then_scrape')).strip()
+    urls = _normalize_schedule_urls(payload.get('urls'), source)
+
+    if not partial and not urls:
+        return None, 'URLs must be a non-empty array'
+
+    if crawl_mode not in {'detail_urls', 'crawl_then_scrape'}:
+        return None, 'crawlMode must be detail_urls or crawl_then_scrape'
+
+    if source == 'itworks' and urls and not _validate_itworks_urls(urls):
+        return None, 'itworks schedules only allow itworks.asia/itwork.asia URLs'
+
+    schedule_type = (payload.get('scheduleType') or ('weekly' if partial else 'daily')).strip().lower()
+    if schedule_type not in {'daily', 'weekly', 'cron'}:
+        return None, 'scheduleType must be daily, weekly, or cron'
+
+    day_of_week = payload.get('dayOfWeek')
+    if schedule_type == 'weekly':
+        try:
+            day_of_week = int(day_of_week)
+        except Exception:
+            return None, 'dayOfWeek is required for weekly schedules'
+        if day_of_week < 0 or day_of_week > 6:
+            return None, 'dayOfWeek must be between 0 and 6'
+
+    time_of_day = payload.get('timeOfDay') or '09:00'
+    if schedule_type in {'daily', 'weekly'} and not re.match(r'^\d{2}:\d{2}$', time_of_day):
+        return None, 'timeOfDay must use HH:MM format'
+    if schedule_type in {'daily', 'weekly'}:
+        hour, minute = [int(part) for part in time_of_day.split(':')]
+        if hour > 23 or minute > 59:
+            return None, 'timeOfDay must be a valid HH:MM time'
+
+    cron_expression = payload.get('cronExpression')
+    if schedule_type == 'cron':
+        if not cron_expression:
+            return None, 'cronExpression is required for cron schedules'
+        try:
+            from croniter import croniter
+            croniter(cron_expression, timezone.now())
+        except Exception:
+            return None, 'cronExpression is invalid'
+
+    max_detail_urls = payload.get('maxDetailUrls')
+    if max_detail_urls in ('', None):
+        max_detail_urls = None
+    else:
+        try:
+            max_detail_urls = int(max_detail_urls)
+        except Exception:
+            return None, 'maxDetailUrls must be a number'
+        if max_detail_urls <= 0:
+            return None, 'maxDetailUrls must be greater than 0'
+
+    return {
+        'source': source,
+        'crawlMode': crawl_mode,
+        'urls': urls,
+        'scheduleType': schedule_type,
+        'dayOfWeek': day_of_week if schedule_type == 'weekly' else None,
+        'timeOfDay': time_of_day,
+        'cronExpression': cron_expression if schedule_type == 'cron' else None,
+        'maxDetailUrls': max_detail_urls,
+    }, None
+
+
+def _schedule_to_dict(schedule):
+    return {
+        'id': str(schedule.pk),
+        'name': schedule.name,
+        'urls': schedule.urls,
+        'source': getattr(schedule, 'source', 'manual'),
+        'crawlMode': getattr(schedule, 'crawlMode', 'detail_urls'),
+        'maxDetailUrls': getattr(schedule, 'maxDetailUrls', None),
+        'scheduleType': schedule.scheduleType,
+        'dayOfWeek': schedule.dayOfWeek,
+        'timeOfDay': schedule.timeOfDay,
+        'cronExpression': schedule.cronExpression,
+        'active': schedule.active,
+        'lastRunAt': schedule.lastRunAt.isoformat() if schedule.lastRunAt else None,
+        'nextRunAt': schedule.nextRunAt.isoformat() if schedule.nextRunAt else None,
+        'createdAt': schedule.createdAt.isoformat() if schedule.createdAt else None,
+        'updatedAt': schedule.updatedAt.isoformat() if schedule.updatedAt else None,
+    }
 
 
 # Normalize known hostnames to stable source names.
@@ -241,7 +351,14 @@ def scrape_result(request):
             scrape_job.progress = 100
             scrape_job.lastError = None
             scrape_job.nextRetryAt = None
-            
+
+            callback_metadata = data.get('metadata', {}) or {}
+            actual_detail_urls = callback_metadata.get('detailUrls') or callback_metadata.get('crawledUrls') or []
+            if isinstance(actual_detail_urls, list) and actual_detail_urls:
+                scrape_job.urls = actual_detail_urls
+                scrape_job.totalUrls = len(actual_detail_urls)
+                scrape_job.processedUrls = len(actual_detail_urls)
+
             # Save each job to JobDetail collection
             saved_count = 0
             for job_data in job_urls:
@@ -466,53 +583,31 @@ def scrape_schedules(request):
     """List or create scrape schedules."""
     if request.method == 'GET':
         schedules = ScrapeSchedule.objects.all().order_by('-createdAt')
-        data = []
-        for schedule in schedules:
-            data.append({
-                'id': str(schedule.pk),
-                'name': schedule.name,
-                'urls': schedule.urls,
-                'scheduleType': schedule.scheduleType,
-                'dayOfWeek': schedule.dayOfWeek,
-                'timeOfDay': schedule.timeOfDay,
-                'cronExpression': schedule.cronExpression,
-                'active': schedule.active,
-                'lastRunAt': schedule.lastRunAt.isoformat() if schedule.lastRunAt else None,
-                'nextRunAt': schedule.nextRunAt.isoformat() if schedule.nextRunAt else None,
-                'createdAt': schedule.createdAt.isoformat() if schedule.createdAt else None,
-                'updatedAt': schedule.updatedAt.isoformat() if schedule.updatedAt else None,
-            })
-
-        return Response({'schedules': data}, status=status.HTTP_200_OK)
+        return Response({'schedules': [_schedule_to_dict(schedule) for schedule in schedules]}, status=status.HTTP_200_OK)
 
     try:
         payload = request.data or {}
-        urls = payload.get('urls') or []
-        if not isinstance(urls, list) or not urls:
-            return Response({'error': 'URLs must be a non-empty array'}, status=status.HTTP_400_BAD_REQUEST)
-
-        schedule_type = (payload.get('scheduleType') or 'weekly').strip().lower()
-        if schedule_type not in {'daily', 'weekly', 'cron'}:
-            schedule_type = 'weekly'
+        clean, error = _validate_schedule_payload(payload)
+        if error:
+            return Response({'error': error}, status=status.HTTP_400_BAD_REQUEST)
 
         schedule = ScrapeSchedule.objects.create(
             name=payload.get('name'),
-            urls=urls,
-            scheduleType=schedule_type,
-            dayOfWeek=payload.get('dayOfWeek'),
-            timeOfDay=payload.get('timeOfDay') or '09:00',
-            cronExpression=payload.get('cronExpression'),
+            urls=clean['urls'],
+            source=clean['source'],
+            crawlMode=clean['crawlMode'],
+            maxDetailUrls=clean['maxDetailUrls'],
+            scheduleType=clean['scheduleType'],
+            dayOfWeek=clean['dayOfWeek'],
+            timeOfDay=clean['timeOfDay'],
+            cronExpression=clean['cronExpression'],
             active=bool(payload.get('active', True)),
         )
 
-        schedule.nextRunAt = compute_next_run(schedule)
-        if schedule_type == 'cron' and schedule.nextRunAt is None:
-            schedule.delete()
-            return Response({'error': 'Cron expression invalid or croniter missing'}, status=status.HTTP_400_BAD_REQUEST)
-
+        schedule.nextRunAt = compute_next_run(schedule) if schedule.active else None
         schedule.save(update_fields=['nextRunAt'])
 
-        return Response({'id': str(schedule.pk)}, status=status.HTTP_201_CREATED)
+        return Response({'id': str(schedule.pk), 'schedule': _schedule_to_dict(schedule)}, status=status.HTTP_201_CREATED)
     except Exception as e:
         logger.error(f"Error creating schedule: {str(e)}", exc_info=True)
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -531,28 +626,39 @@ def scrape_schedule_detail(request, schedule_id):
         return Response({'success': True}, status=status.HTTP_200_OK)
 
     payload = request.data or {}
-    if 'name' in payload:
-        schedule.name = payload.get('name')
-    if 'urls' in payload:
-        schedule.urls = payload.get('urls') or []
-    if 'scheduleType' in payload:
-        schedule.scheduleType = payload.get('scheduleType')
-    if 'dayOfWeek' in payload:
-        schedule.dayOfWeek = payload.get('dayOfWeek')
-    if 'timeOfDay' in payload:
-        schedule.timeOfDay = payload.get('timeOfDay') or schedule.timeOfDay
-    if 'cronExpression' in payload:
-        schedule.cronExpression = payload.get('cronExpression')
+    merged = {
+        'name': schedule.name,
+        'urls': schedule.urls,
+        'source': getattr(schedule, 'source', 'manual'),
+        'crawlMode': getattr(schedule, 'crawlMode', 'detail_urls'),
+        'maxDetailUrls': getattr(schedule, 'maxDetailUrls', None),
+        'scheduleType': schedule.scheduleType,
+        'dayOfWeek': schedule.dayOfWeek,
+        'timeOfDay': schedule.timeOfDay,
+        'cronExpression': schedule.cronExpression,
+        'active': schedule.active,
+    }
+    merged.update(payload)
+    clean, error = _validate_schedule_payload(merged)
+    if error:
+        return Response({'error': error}, status=status.HTTP_400_BAD_REQUEST)
+
+    schedule.name = payload.get('name', schedule.name)
+    schedule.urls = clean['urls']
+    schedule.source = clean['source']
+    schedule.crawlMode = clean['crawlMode']
+    schedule.maxDetailUrls = clean['maxDetailUrls']
+    schedule.scheduleType = clean['scheduleType']
+    schedule.dayOfWeek = clean['dayOfWeek']
+    schedule.timeOfDay = clean['timeOfDay']
+    schedule.cronExpression = clean['cronExpression']
     if 'active' in payload:
         schedule.active = bool(payload.get('active'))
 
-    schedule.nextRunAt = compute_next_run(schedule)
-    if schedule.scheduleType == 'cron' and schedule.nextRunAt is None:
-        return Response({'error': 'Cron expression invalid or croniter missing'}, status=status.HTTP_400_BAD_REQUEST)
-
+    schedule.nextRunAt = compute_next_run(schedule) if schedule.active else None
     schedule.save()
 
-    return Response({'success': True}, status=status.HTTP_200_OK)
+    return Response({'success': True, 'schedule': _schedule_to_dict(schedule)}, status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])
@@ -567,4 +673,23 @@ def scrape_schedule_toggle(request, schedule_id):
     schedule.nextRunAt = compute_next_run(schedule) if schedule.active else None
     schedule.save(update_fields=['active', 'nextRunAt'])
 
-    return Response({'success': True, 'active': schedule.active}, status=status.HTTP_200_OK)
+    return Response({'success': True, 'active': schedule.active, 'schedule': _schedule_to_dict(schedule)}, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+def scrape_schedule_run(request, schedule_id):
+    """Run a schedule immediately."""
+    try:
+        schedule = ScrapeSchedule.objects.get(pk=schedule_id)
+    except ScrapeSchedule.DoesNotExist:
+        return Response({'error': 'Schedule not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    queue = get_scrape_queue()
+    queue.start()
+    job = queue.enqueue_schedule(schedule, timezone.now())
+
+    schedule.lastRunAt = timezone.now()
+    schedule.nextRunAt = compute_next_run(schedule)
+    schedule.save(update_fields=['lastRunAt', 'nextRunAt'])
+
+    return Response({'success': True, 'jobId': str(job.pk), 'schedule': _schedule_to_dict(schedule)}, status=status.HTTP_200_OK)
