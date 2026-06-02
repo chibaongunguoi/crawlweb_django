@@ -19,7 +19,8 @@ from .admin_views import (
 from .scrape_views import (
     scrape_upload, scrape_progress, scrape_result,
     scrape_status, scrape_jobs, scrape_delete_job,
-    scrape_retry_job, scrape_schedules, scrape_schedule_detail, scrape_schedule_toggle
+    scrape_retry_job, scrape_schedules, scrape_schedule_detail,
+    scrape_schedule_toggle, scrape_schedule_run
 )
 from .search_views import advanced_job_search
 
@@ -87,4 +88,5 @@ urlpatterns = [
     path("scrape/schedules/", scrape_schedules, name="scrape_schedules"),
     path("scrape/schedules/<str:schedule_id>/", scrape_schedule_detail, name="scrape_schedule_detail"),
     path("scrape/schedules/<str:schedule_id>/toggle/", scrape_schedule_toggle, name="scrape_schedule_toggle"),
+    path("scrape/schedules/<str:schedule_id>/run/", scrape_schedule_run, name="scrape_schedule_run"),
 ]

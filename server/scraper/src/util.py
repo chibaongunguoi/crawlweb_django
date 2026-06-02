@@ -29,6 +29,10 @@ def extract_deadline_from_job_info(job_info: dict) -> str | None:
         "expiry",
         "expire",
         "expired",
+        "deadline",
+        "han nop",
+        "ngay nop",
+        "han nop ho so",
         "ngay het han",
         "ngay het",
     )

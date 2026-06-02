@@ -10,7 +10,9 @@ from .itworks_crawl_strategy import ItworksCrawlStrategy
 class OverallCrawlStrategy(ScrapeStrategy):
     def __init__(self):
         self.sub_strategies: dict[str, ScrapeStrategy] = {
-            r"^https://devwork\.vn/": DevworkCrawlStrategy(),
+            r"^https://(www\.)?devwork\.vn/": DevworkCrawlStrategy(),
+            r"^https://(www\.)?devwork\.com/": DevworkCrawlStrategy(),
+            r"^https://jobs\.devwork\.(vn|com)/": DevworkCrawlStrategy(),
             r"^https://www\.topcv\.vn/": TopCvCrawlStrategy(),
             r"^https://(www\.)?itworks\.asia/": ItworksCrawlStrategy(),
             r"^https://(www\.)?itwork\.asia/": ItworksCrawlStrategy(),
