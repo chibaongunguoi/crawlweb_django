@@ -23,6 +23,7 @@ from .job_utils import (
     get_salary_sort_value,
     city_matches_filter,
     normalize_city_label,
+    compute_deadline_status,
 )
 import bcrypt
 import jwt
@@ -823,6 +824,18 @@ def user_applications(request):
             job_id = request.data.get('jobId') or request.data.get('JobDetailID')
             if not job_id:
                 return Response({'error': 'Job ID required'}, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                job = JobDetail.objects.get(pk=job_id)
+            except JobDetail.DoesNotExist:
+                return Response({'error': 'Job not found'}, status=status.HTTP_404_NOT_FOUND)
+
+            is_expired, _ = compute_deadline_status(job.deadline)
+            if is_expired:
+                return Response(
+                    {'error': 'Công việc này đã hết hạn nộp CV'},
+                    status=status.HTTP_410_GONE,
+                )
             
             # Check if already applied
             if Application.objects.filter(userID=user.username, JobDetailID=job_id).exists():
