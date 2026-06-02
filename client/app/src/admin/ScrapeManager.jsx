@@ -36,6 +36,7 @@ const ScrapeManager = () => {
   const [toast, setToast] = useState({ show: false, type: '', message: '' });
   const [viewModal, setViewModal] = useState({ show: false, job: null });
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [selectedJobIds, setSelectedJobIds] = useState([]);
   const pollingIntervalRef = useRef(null);
 
   // Schedule state
@@ -45,6 +46,7 @@ const ScrapeManager = () => {
   const [scheduleForm, setScheduleForm] = useState({ ...emptyScheduleForm });
   const [editingScheduleId, setEditingScheduleId] = useState(null);
   const [scheduleError, setScheduleError] = useState('');
+  const [selectedScheduleIds, setSelectedScheduleIds] = useState([]);
 
   // Show toast notification
   const showToast = (type, message) => {
@@ -225,10 +227,62 @@ const ScrapeManager = () => {
       });
       if (!response.ok) throw new Error('Failed to delete job');
       showToast('success', 'Xóa lịch sử thành công');
+      setSelectedJobIds(prev => prev.filter(id => id !== jobId));
       setJobs(prev => prev.filter(job => job.id !== jobId));
     } catch (err) {
       console.error('Error deleting job:', err);
       showToast('error', 'Lỗi khi xóa lịch sử');
+    }
+  };
+
+  const handleSelectJob = (jobId) => {
+    setSelectedJobIds(prev =>
+      prev.includes(jobId) ? prev.filter(id => id !== jobId) : [...prev, jobId]
+    );
+  };
+
+  const handleSelectAllJobs = (checked) => {
+    setSelectedJobIds(prev => {
+      const jobIds = jobs.map(job => job.id);
+      if (checked) {
+        return Array.from(new Set([...prev, ...jobIds]));
+      }
+      return prev.filter(id => !jobIds.includes(id));
+    });
+  };
+
+  const handleBulkDeleteJobs = async () => {
+    if (selectedJobIds.length === 0) return;
+    if (!window.confirm(`Bạn có chắc muốn xóa ${selectedJobIds.length} lịch sử cào dữ liệu đã chọn?`)) return;
+
+    try {
+      const results = await Promise.allSettled(
+        selectedJobIds.map(jobId =>
+          fetch(`/api/scrape/jobs/${jobId}/`, {
+            method: 'DELETE',
+            credentials: 'include',
+          }).then(response => {
+            if (!response.ok) throw new Error('Failed to delete job');
+            return jobId;
+          })
+        )
+      );
+
+      const failedCount = results.filter(result => result.status === 'rejected').length;
+      const successCount = selectedJobIds.length - failedCount;
+
+      if (failedCount > 0) {
+        showToast('error', `Đã xóa ${successCount} lịch sử. ${failedCount} lịch sử xóa thất bại.`);
+      } else {
+        showToast('success', `Đã xóa ${successCount} lịch sử thành công`);
+      }
+
+      setJobs(prev => prev.filter(job => !selectedJobIds.includes(job.id)));
+      setSelectedJobIds([]);
+      fetchJobs();
+    } catch (err) {
+      console.error('Error bulk deleting jobs:', err);
+      showToast('error', 'Lỗi khi xóa hàng loạt lịch sử');
     }
   };
 
@@ -401,10 +455,62 @@ const ScrapeManager = () => {
       });
       if (response.ok) {
         showToast('success', 'Đã xóa lịch');
+        setSelectedScheduleIds(prev => prev.filter(id => id !== scheduleId));
         setSchedules(prev => prev.filter(s => s.id !== scheduleId));
       }
     } catch (err) {
       showToast('error', 'Lỗi khi xóa lịch');
+    }
+  };
+
+  const handleSelectSchedule = (scheduleId) => {
+    setSelectedScheduleIds(prev =>
+      prev.includes(scheduleId) ? prev.filter(id => id !== scheduleId) : [...prev, scheduleId]
+    );
+  };
+
+  const handleSelectAllSchedules = (checked) => {
+    setSelectedScheduleIds(prev => {
+      const scheduleIds = schedules.map(schedule => schedule.id);
+      if (checked) {
+        return Array.from(new Set([...prev, ...scheduleIds]));
+      }
+      return prev.filter(id => !scheduleIds.includes(id));
+    });
+  };
+
+  const handleBulkDeleteSchedules = async () => {
+    if (selectedScheduleIds.length === 0) return;
+    if (!window.confirm(`Bạn có chắc muốn xóa ${selectedScheduleIds.length} lịch cào đã chọn?`)) return;
+
+    try {
+      const results = await Promise.allSettled(
+        selectedScheduleIds.map(scheduleId =>
+          fetch(`/api/scrape/schedules/${scheduleId}/`, {
+            method: 'DELETE',
+            credentials: 'include',
+          }).then(response => {
+            if (!response.ok) throw new Error('Failed to delete schedule');
+            return scheduleId;
+          })
+        )
+      );
+
+      const failedCount = results.filter(result => result.status === 'rejected').length;
+      const successCount = selectedScheduleIds.length - failedCount;
+
+      if (failedCount > 0) {
+        showToast('error', `Đã xóa ${successCount} lịch. ${failedCount} lịch xóa thất bại.`);
+      } else {
+        showToast('success', `Đã xóa ${successCount} lịch thành công`);
+      }
+
+      setSchedules(prev => prev.filter(schedule => !selectedScheduleIds.includes(schedule.id)));
+      setSelectedScheduleIds([]);
+      fetchSchedules();
+    } catch (err) {
+      console.error('Error bulk deleting schedules:', err);
+      showToast('error', 'Lỗi khi xóa hàng loạt lịch');
     }
   };
 
@@ -531,16 +637,33 @@ const ScrapeManager = () => {
             <div style={{ marginTop: '24px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                 <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937' }}>Lịch sử cào dữ liệu</h2>
-                <button onClick={fetchJobs} disabled={loading}
-                  style={{ padding: '8px 16px', backgroundColor: '#6b7280', color: 'white', border: 'none', borderRadius: '6px', cursor: loading ? 'not-allowed' : 'pointer', fontWeight: '500' }}>
-                  {loading ? 'Đang tải...' : 'Làm mới'}
-                </button>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  {selectedJobIds.length > 0 && (
+                    <button onClick={handleBulkDeleteJobs}
+                      style={{ padding: '8px 16px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '500' }}>
+                      Xóa đã chọn ({selectedJobIds.length})
+                    </button>
+                  )}
+                  <button onClick={fetchJobs} disabled={loading}
+                    style={{ padding: '8px 16px', backgroundColor: '#6b7280', color: 'white', border: 'none', borderRadius: '6px', cursor: loading ? 'not-allowed' : 'pointer', fontWeight: '500' }}>
+                    {loading ? 'Đang tải...' : 'Làm mới'}
+                  </button>
+                </div>
               </div>
               <div style={{ backgroundColor: 'white', borderRadius: '8px', boxShadow: '0 1px 3px 0 rgba(0,0,0,0.1)', overflow: 'hidden' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead style={{ backgroundColor: '#f9fafb' }}>
-                    <tr>
-                      {['URL', 'Trạng thái', 'Tiến độ', 'Retry', 'Lỗi', 'Tạo lúc', 'Hoàn thành', 'Thao tác'].map(h => (
+                      <tr>
+                        <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', width: '48px' }}>
+                          <input
+                            type="checkbox"
+                            checked={jobs.length > 0 && jobs.every(job => selectedJobIds.includes(job.id))}
+                            disabled={jobs.length === 0}
+                            onChange={(e) => handleSelectAllJobs(e.target.checked)}
+                            title="Chọn tất cả"
+                          />
+                        </th>
+                        {['URL', 'Trạng thái', 'Tiến độ', 'Retry', 'Lỗi', 'Tạo lúc', 'Hoàn thành', 'Thao tác'].map(h => (
                         <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase' }}>{h}</th>
                       ))}
                     </tr>
@@ -548,6 +671,14 @@ const ScrapeManager = () => {
                   <tbody>
                     {jobs.map((job, idx) => (
                       <tr key={job.id} style={{ borderTop: idx > 0 ? '1px solid #e5e7eb' : 'none' }}>
+                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedJobIds.includes(job.id)}
+                            onChange={() => handleSelectJob(job.id)}
+                            title="Chọn lịch sử cào"
+                          />
+                        </td>
                         <td style={{ padding: '12px 16px', fontSize: '14px', color: '#374151', maxWidth: '300px' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                             {job.urls?.length > 0 ? (
@@ -723,6 +854,12 @@ const ScrapeManager = () => {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', margin: 0 }}>Lịch cào tự động</h2>
             <div style={{ display: 'flex', gap: '10px' }}>
+              {selectedScheduleIds.length > 0 && (
+                <button onClick={handleBulkDeleteSchedules}
+                  style={{ padding: '8px 16px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '500', cursor: 'pointer' }}>
+                  Xóa đã chọn ({selectedScheduleIds.length})
+                </button>
+              )}
               <button onClick={fetchSchedules}
                 style={{ padding: '8px 16px', backgroundColor: '#6b7280', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '500', cursor: 'pointer' }}>
                 {scheduleLoading ? 'Đang tải...' : 'Làm mới'}
@@ -745,6 +882,15 @@ const ScrapeManager = () => {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead style={{ backgroundColor: '#f9fafb' }}>
                   <tr>
+                    <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', width: '48px' }}>
+                      <input
+                        type="checkbox"
+                        checked={schedules.length > 0 && schedules.every(schedule => selectedScheduleIds.includes(schedule.id))}
+                        disabled={schedules.length === 0}
+                        onChange={(e) => handleSelectAllSchedules(e.target.checked)}
+                        title="Chọn tất cả"
+                      />
+                    </th>
                     {['Tên', 'Nguồn', 'Seed URLs', 'Loại lịch', 'Chạy gần nhất', 'Chạy tiếp theo', 'Trạng thái', 'Thao tác'].map(h => (
                       <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase' }}>{h}</th>
                     ))}
@@ -753,6 +899,14 @@ const ScrapeManager = () => {
                 <tbody>
                   {schedules.map((s, idx) => (
                     <tr key={s.id} style={{ borderTop: idx > 0 ? '1px solid #e5e7eb' : 'none' }}>
+                      <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedScheduleIds.includes(s.id)}
+                          onChange={() => handleSelectSchedule(s.id)}
+                          title="Chọn lịch cào"
+                        />
+                      </td>
                       <td style={{ padding: '12px 16px', fontSize: '14px', fontWeight: '500', color: '#1f2937' }}>{s.name || '-'}</td>
                       <td style={{ padding: '12px 16px', fontSize: '13px', color: '#6b7280' }}>{SOURCE_LABELS[s.source] || s.source || '-'}</td>
                       <td style={{ padding: '12px 16px', fontSize: '12px', color: '#6b7280', maxWidth: '200px' }}>

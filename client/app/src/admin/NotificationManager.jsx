@@ -6,6 +6,7 @@ export default function NotificationManager() {
   const [filteredNotifications, setFilteredNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedNotificationIds, setSelectedNotificationIds] = useState([]);
 
   useEffect(() => {
     fetchNotifications();
@@ -60,6 +61,7 @@ export default function NotificationManager() {
 
       if (response.ok) {
         alert('Xóa thông báo thành công!');
+        setSelectedNotificationIds((prev) => prev.filter((id) => id !== notificationId));
         fetchNotifications();
       } else {
         const data = await response.json();
@@ -68,6 +70,64 @@ export default function NotificationManager() {
     } catch (error) {
       console.error('Error deleting notification:', error);
       alert('Lỗi khi xóa thông báo');
+    }
+  };
+
+  const handleSelectNotification = (notificationId) => {
+    setSelectedNotificationIds((prev) =>
+      prev.includes(notificationId)
+        ? prev.filter((id) => id !== notificationId)
+        : [...prev, notificationId]
+    );
+  };
+
+  const handleSelectAllNotifications = (checked, notificationsToSelect) => {
+    setSelectedNotificationIds((prev) => {
+      const pageIds = notificationsToSelect.map((n) => n.id);
+      if (checked) {
+        return Array.from(new Set([...prev, ...pageIds]));
+      }
+      return prev.filter((id) => !pageIds.includes(id));
+    });
+  };
+
+  const handleBulkDeleteNotifications = async () => {
+    if (selectedNotificationIds.length === 0) return;
+
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa ${selectedNotificationIds.length} thông báo đã chọn?`)) {
+      return;
+    }
+
+    try {
+      const results = await Promise.allSettled(
+        selectedNotificationIds.map((notificationId) =>
+          fetch(`/api/admin/notifications/${notificationId}/`, {
+            method: 'DELETE',
+            credentials: 'include'
+          }).then(async (response) => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(data.error || 'Lỗi khi xóa thông báo');
+            }
+            return notificationId;
+          })
+        )
+      );
+
+      const failedCount = results.filter((r) => r.status === 'rejected').length;
+      const successCount = selectedNotificationIds.length - failedCount;
+
+      if (failedCount > 0) {
+        alert(`Đã xóa ${successCount} thông báo. ${failedCount} thông báo xóa thất bại.`);
+      } else {
+        alert(`Đã xóa ${successCount} thông báo thành công!`);
+      }
+
+      setSelectedNotificationIds([]);
+      fetchNotifications();
+    } catch (error) {
+      console.error('Error bulk deleting notifications:', error);
+      alert('Có lỗi xảy ra khi xóa hàng loạt thông báo');
     }
   };
 
@@ -102,12 +162,23 @@ export default function NotificationManager() {
         <div className="notifications-section">
           <div className="notifications-header">
             <h2>Danh sách thông báo ({filteredNotifications.length})</h2>
-            <button className="refresh-btn" onClick={fetchNotifications}>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              {selectedNotificationIds.length > 0 && (
+                <button
+                  className="delete-btn"
+                  onClick={handleBulkDeleteNotifications}
+                  style={{ padding: '8px 14px' }}
+                >
+                  Xóa đã chọn ({selectedNotificationIds.length})
+                </button>
+              )}
+              <button className="refresh-btn" onClick={fetchNotifications}>
               <svg className="refresh-icon" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd"/>
               </svg>
-              Làm mới
-            </button>
+                Làm mới
+              </button>
+            </div>
           </div>
 
           <div className="search-box">
@@ -133,6 +204,15 @@ export default function NotificationManager() {
               <table className="notification-table" style={{width: '100%', borderCollapse: 'collapse'}}>
                 <thead>
                   <tr>
+                    <th style={{padding: '12px', textAlign: 'center', borderBottom: '2px solid #e2e8f0', width: '48px'}}>
+                      <input
+                        type="checkbox"
+                        checked={filteredNotifications.length > 0 && filteredNotifications.every((n) => selectedNotificationIds.includes(n.id))}
+                        disabled={filteredNotifications.length === 0}
+                        onChange={(e) => handleSelectAllNotifications(e.target.checked, filteredNotifications)}
+                        title="Chọn tất cả"
+                      />
+                    </th>
                     <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #e2e8f0'}}>Người nhận</th>
                     <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #e2e8f0'}}>Công việc</th>
                     <th style={{padding: '12px', textAlign: 'left', borderBottom: '2px solid #e2e8f0'}}>Nội dung</th>
@@ -144,6 +224,14 @@ export default function NotificationManager() {
                 <tbody>
                   {filteredNotifications.map((notification) => (
                     <tr key={notification.id} style={{borderBottom: '1px solid #e2e8f0'}}>
+                      <td style={{padding: '16px', textAlign: 'center'}}>
+                        <input
+                          type="checkbox"
+                          checked={selectedNotificationIds.includes(notification.id)}
+                          onChange={() => handleSelectNotification(notification.id)}
+                          title="Chọn thông báo"
+                        />
+                      </td>
                       <td style={{padding: '16px'}}>
                         <div className="user-cell">
                           <span className="user-name">
