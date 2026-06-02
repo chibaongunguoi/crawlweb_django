@@ -52,11 +52,13 @@ export default function JobDetail() {
         if (method === "POST") {
           const data = await response.json();
           setIsFollowed(data.isFollowed ?? true);
+          // Optimistic update: tăng follow count ngay khi thành công
+          setFollowCount(prev => prev + 1);
         } else {
           setIsFollowed(false);
+          // Optimistic update: giảm follow count ngay khi thành công
+          setFollowCount(prev => Math.max(0, prev - 1));
         }
-        // Update follow count
-        fetchFollowCount(jobId);
       } else {
         const errorData = await response.json();
         if (response.status === 401) {

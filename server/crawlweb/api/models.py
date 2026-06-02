@@ -39,7 +39,15 @@ class JobDetail(models.Model):
         max_length=500,
         unique=True,
         db_index=True,
-        help_text="URL của công việc"
+        help_text="URL gốc/canonical của công việc"
+    )
+    url_hash = models.CharField(
+        max_length=64,
+        unique=True,
+        db_index=True,
+        blank=True,
+        null=True,
+        help_text="SHA-256 hash của URL đã chuẩn hóa để chống duplicate"
     )
     source = models.CharField(
         max_length=100,
