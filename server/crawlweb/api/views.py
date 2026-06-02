@@ -899,16 +899,39 @@ def company_applications(request):
         # Get company info
         companies = Company.objects.filter(username=user.username)
         if not companies:
+            logger.info(f"[COMPANY_APPS] No company found for user: {user.username}")
             return Response({'success': True, 'data': []}, status=status.HTTP_200_OK)
         
         company = companies.first()
+        logger.info(f"[COMPANY_APPS] Company found: {company.name} (username: {user.username})")
         
-        # Get all jobs from this company
-        jobs = JobDetail.objects.filter(company_name=company.name)
+        # Get all jobs from this company - try both exact match and case-insensitive match
+        from django.db.models import Q
+        jobs = JobDetail.objects.filter(
+            Q(company_name=company.name) |  # Exact match
+            Q(company_name__iexact=company.name)  # Case-insensitive match
+        ).distinct()
+        
         job_ids = [str(job.pk) for job in jobs]
+        logger.info(f"[COMPANY_APPS] Found {len(job_ids)} jobs for company '{company.name}'")
+        logger.info(f"[COMPANY_APPS] Job IDs (as strings): {job_ids}")
+        
+        # If no jobs found, log all company names in database for debugging
+        if not job_ids:
+            all_company_names = JobDetail.objects.values_list('company_name', flat=True).distinct()
+            logger.warning(f"[COMPANY_APPS] No jobs found! Available company names in database:")
+            for name in all_company_names:
+                logger.warning(f"  - '{name}'")
+        
+        # DEBUG: Log all applications in the database
+        all_applications = Application.objects.all()
+        logger.info(f"[COMPANY_APPS] DEBUG: Total applications in DB: {all_applications.count()}")
+        for idx, app in enumerate(list(all_applications)[:10]):  # Log first 10
+            logger.info(f"[COMPANY_APPS] DEBUG App {idx}: userID={app.userID}, JobDetailID={app.JobDetailID} (type={type(app.JobDetailID).__name__}, str_value={str(app.JobDetailID)})")
         
         # Get applications for these jobs
         applications = Application.objects.filter(JobDetailID__in=job_ids)
+        logger.info(f"[COMPANY_APPS] Found {applications.count()} applications for these jobs")
         
         result = []
         for app in applications:
@@ -949,6 +972,7 @@ def company_applications(request):
             
             result.append(app_data)
         
+        logger.info(f"[COMPANY_APPS] Returning {len(result)} applications to company {user.username}")
         return Response({'success': True, 'data': result}, status=status.HTTP_200_OK)
     except Exception as e:
         logger.error(f"Get company applications error: {e}")

@@ -8,6 +8,7 @@ export default function JobSearch() {
   const [selectedCity, setSelectedCity] = useState('');
   const [skills, setSkills] = useState([]);
   const [cities, setCities] = useState([]);
+  const [allJobs, setAllJobs] = useState([]);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -33,6 +34,38 @@ export default function JobSearch() {
     setSelectedCity(params.get('city') || '');
   }, [location.search]);
 
+  // Update skills when city is selected
+  useEffect(() => {
+    if (selectedCity && allJobs.length > 0) {
+      // Filter jobs by selected city
+      const jobsInCity = allJobs.filter(job => {
+        const jobCity = getCanonicalCity(job.province, "Khác");
+        return jobCity === selectedCity;
+      });
+
+      // Extract skills from filtered jobs
+      const skillsInCity = new Set();
+      jobsInCity.forEach(job => {
+        (job.skills || []).forEach(s => {
+          const trimmed = s.trim();
+          if (trimmed) skillsInCity.add(trimmed);
+        });
+      });
+
+      setSkills(Array.from(skillsInCity).sort());
+    } else if (!selectedCity && allJobs.length > 0) {
+      // Show all skills when no city selected
+      const allSkillsList = new Set();
+      allJobs.forEach(job => {
+        (job.skills || []).forEach(s => {
+          const trimmed = s.trim();
+          if (trimmed) allSkillsList.add(trimmed);
+        });
+      });
+      setSkills(Array.from(allSkillsList).sort());
+    }
+  }, [selectedCity, allJobs]);
+
   const fetchSkillsAndCities = async () => {
     try {
       const response = await fetch('/api/jobs/', {
@@ -44,23 +77,30 @@ export default function JobSearch() {
       
       if (response.ok) {
         const data = await response.json();
-        const skillsList = (data.skills || []).map((skill) => skill.trim()).filter(Boolean);
+        const jobs = data.data || [];
+        setAllJobs(jobs);
+
+        // Extract all skills
+        const skillsList = new Set();
         const cityMap = new Map();
 
-        (data.cities || []).forEach((city) => {
-          if (!city || !city.trim()) {
-            return;
-          }
-          const normalizedCity = getCanonicalCity(city.trim(), "Khác");
-          if (!normalizedCity) {
-            return;
-          }
-          if (!cityMap.has(normalizedCity.toLowerCase())) {
-            cityMap.set(normalizedCity.toLowerCase(), normalizedCity);
+        jobs.forEach((job) => {
+          // Add skills
+          (job.skills || []).forEach(skill => {
+            const trimmed = skill.trim();
+            if (trimmed) skillsList.add(trimmed);
+          });
+
+          // Add cities
+          if (job.province && job.province.trim()) {
+            const normalizedCity = getCanonicalCity(job.province.trim(), "Khác");
+            if (normalizedCity && !cityMap.has(normalizedCity.toLowerCase())) {
+              cityMap.set(normalizedCity.toLowerCase(), normalizedCity);
+            }
           }
         });
 
-        setSkills(skillsList.sort());
+        setSkills(Array.from(skillsList).sort());
         setCities(Array.from(cityMap.values()).sort());
       }
     } catch (error) {
