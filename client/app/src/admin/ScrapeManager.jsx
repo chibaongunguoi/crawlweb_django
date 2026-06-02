@@ -12,6 +12,7 @@ const ScrapeManager = () => {
   const [toast, setToast] = useState({ show: false, type: '', message: '' });
   const [viewModal, setViewModal] = useState({ show: false, job: null });
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [selectedJobIds, setSelectedJobIds] = useState([]);
   const pollingIntervalRef = useRef(null);
 
   // Show toast notification
@@ -175,6 +176,58 @@ const ScrapeManager = () => {
       setSubmitting(false);
     }
   };
+
+  const handleToggleSelect = (jobId) => {
+    setSelectedJobIds((prev) =>
+      prev.includes(jobId) ? prev.filter((id) => id !== jobId) : [...prev, jobId]
+    );
+  };
+
+  const handleToggleSelectAll = () => {
+    const pageIds = jobs.map((job) => job.id);
+    const isAllSelected = pageIds.length > 0 && pageIds.every((id) => selectedJobIds.includes(id));
+    setSelectedJobIds((prev) =>
+      isAllSelected
+        ? prev.filter((id) => !pageIds.includes(id))
+        : Array.from(new Set([...prev, ...pageIds]))
+    );
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedJobIds.length === 0) {
+      alert('Vui lòng chọn ít nhất một lịch sử cào');
+      return;
+    }
+
+    if (!window.confirm(`Bạn có chắc muốn xóa ${selectedJobIds.length} lịch sử cào đã chọn?`)) {
+      return;
+    }
+
+    try {
+      const results = await Promise.allSettled(
+        selectedJobIds.map((jobId) =>
+          fetch(`/api/scrape/jobs/${jobId}/`, {
+            method: 'DELETE',
+            credentials: 'include',
+          })
+        )
+      );
+      const failed = results.filter((r) => r.status !== 'fulfilled' || !r.value.ok).length;
+      showToast(
+        failed ? 'error' : 'success',
+        failed
+          ? `Đã xóa ${selectedJobIds.length - failed} lịch sử, lỗi ${failed}`
+          : 'Xóa hàng loạt thành công'
+      );
+      setSelectedJobIds([]);
+      fetchJobs();
+    } catch (err) {
+      console.error('Error bulk deleting jobs:', err);
+      showToast('error', 'Lỗi khi xóa hàng loạt');
+    }
+  };
+
+  const isAllSelected = jobs.length > 0 && jobs.every((job) => selectedJobIds.includes(job.id));
 
   const handleDelete = async (jobId) => {
     if (!window.confirm('Bạn có chắc muốn xóa lịch sử cào dữ liệu này?')) {
@@ -398,21 +451,39 @@ const ScrapeManager = () => {
             <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937' }}>
               Lịch sử cào dữ liệu
             </h2>
-            <button 
-              onClick={fetchJobs} 
-              disabled={loading}
-              style={{
-                padding: '8px 16px',
-                backgroundColor: '#6b7280',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                fontWeight: '500',
-              }}
-            >
-              {loading ? 'Đang tải...' : 'Làm mới'}
-            </button>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {selectedJobIds.length > 0 && (
+                <button
+                  onClick={handleBulkDelete}
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: '#ef4444',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontWeight: '500',
+                  }}
+                >
+                  Xóa đã chọn ({selectedJobIds.length})
+                </button>
+              )}
+              <button 
+                onClick={fetchJobs} 
+                disabled={loading}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#6b7280',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  fontWeight: '500',
+                }}
+              >
+                {loading ? 'Đang tải...' : 'Làm mới'}
+              </button>
+            </div>
           </div>
           
           <div style={{ 
@@ -424,6 +495,14 @@ const ScrapeManager = () => {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead style={{ backgroundColor: '#f9fafb' }}>
                 <tr>
+                  <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#6b7280', width: '48px' }}>
+                    <input
+                      type="checkbox"
+                      checked={isAllSelected}
+                      onChange={handleToggleSelectAll}
+                      title="Chọn tất cả"
+                    />
+                  </th>
                   <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase' }}>URL</th>
                   <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase' }}>Trạng thái</th>
                   <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase' }}>Tiến độ</th>
@@ -437,6 +516,13 @@ const ScrapeManager = () => {
               <tbody>
                 {jobs.map((job, index) => (
                   <tr key={job.id} style={{ borderTop: index > 0 ? '1px solid #e5e7eb' : 'none' }}>
+                    <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedJobIds.includes(job.id)}
+                        onChange={() => handleToggleSelect(job.id)}
+                      />
+                    </td>
                     <td style={{ padding: '12px 16px', fontSize: '14px', color: '#374151', maxWidth: '300px' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                         {job.urls && job.urls.length > 0 ? (

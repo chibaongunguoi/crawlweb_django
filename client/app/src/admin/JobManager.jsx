@@ -8,6 +8,7 @@ export default function JobManager() {
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedJobIds, setSelectedJobIds] = useState([]);
   const itemsPerPage = 20;
 
   useEffect(() => {
@@ -57,6 +58,59 @@ export default function JobManager() {
     }
   };
 
+  const handleToggleSelect = (jobId) => {
+    setSelectedJobIds((prev) =>
+      prev.includes(jobId) ? prev.filter((id) => id !== jobId) : [...prev, jobId]
+    );
+  };
+
+  const handleToggleSelectAll = () => {
+    const pageIds = paginatedJobs.map((job) => job.id);
+    const isAllSelected = pageIds.length > 0 && pageIds.every((id) => selectedJobIds.includes(id));
+    setSelectedJobIds((prev) =>
+      isAllSelected
+        ? prev.filter((id) => !pageIds.includes(id))
+        : Array.from(new Set([...prev, ...pageIds]))
+    );
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedJobIds.length === 0) {
+      alert("Vui lòng chọn ít nhất một công việc");
+      return;
+    }
+
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa ${selectedJobIds.length} công việc đã chọn?`)) {
+      return;
+    }
+
+    try {
+      const results = await Promise.allSettled(
+        selectedJobIds.map((jobId) =>
+          fetch(`/api/admin/jobs/${jobId}/`, {
+            method: "DELETE",
+            credentials: "include",
+          })
+        )
+      );
+      const failed = results.filter((result) => result.status !== "fulfilled" || !result.value.ok).length;
+      alert(failed ? `Đã xóa ${selectedJobIds.length - failed} công việc, lỗi ${failed} công việc` : "Xóa hàng loạt công việc thành công!");
+      setSelectedJobIds([]);
+      fetchJobs();
+    } catch (error) {
+      console.error("Error bulk deleting jobs:", error);
+      alert("Có lỗi xảy ra khi xóa hàng loạt công việc");
+    }
+  };
+
+  const handleBulkEdit = () => {
+    if (selectedJobIds.length !== 1) {
+      alert("Vui lòng chọn đúng 1 công việc để sửa");
+      return;
+    }
+    window.open(`/admin/jobs/${selectedJobIds[0]}/edit`, "_blank");
+  };
+
   const handleDelete = async (jobId, jobTitle) => {
     if (!window.confirm(`Bạn có chắc chắn muốn xóa công việc "${jobTitle}"?`)) {
       return;
@@ -96,6 +150,7 @@ export default function JobManager() {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const paginatedJobs = filteredJobs.slice(startIndex, endIndex);
+  const isAllCurrentPageSelected = paginatedJobs.length > 0 && paginatedJobs.every((job) => selectedJobIds.includes(job.id));
 
   return (
     <div>
@@ -113,12 +168,24 @@ export default function JobManager() {
         <div className="jobs-section">
           <div className="jobs-header">
             <h2>Danh sách công việc ({filteredJobs.length})</h2>
-            <button className="refresh-btn" onClick={fetchJobs}>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              {selectedJobIds.length > 0 && (
+                <>
+                  <button className="edit-company-btn" onClick={handleBulkEdit}>
+                    Sửa
+                  </button>
+                  <button className="delete-btn" onClick={handleBulkDelete}>
+                    Xóa đã chọn ({selectedJobIds.length})
+                  </button>
+                </>
+              )}
+              <button className="refresh-btn" onClick={fetchJobs}>
               <svg className="refresh-icon" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd"/>
               </svg>
-              Làm mới
-            </button>
+                Làm mới
+              </button>
+            </div>
           </div>
 
           <div className="search-box">
@@ -135,6 +202,14 @@ export default function JobManager() {
             <table className="jobs-table">
               <thead>
                 <tr>
+                  <th style={{ width: "48px", textAlign: "center" }}>
+                    <input
+                      type="checkbox"
+                      checked={isAllCurrentPageSelected}
+                      onChange={handleToggleSelectAll}
+                      title="Chọn tất cả trên trang này"
+                    />
+                  </th>
                   <th>Tên công việc</th>
                   <th>Công ty</th>
                   <th>Địa điểm</th>
@@ -146,13 +221,20 @@ export default function JobManager() {
               <tbody>
                 {paginatedJobs.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="no-jobs">
+                    <td colSpan="7" className="no-jobs">
                       Không tìm thấy công việc nào
                     </td>
                   </tr>
                 ) : (
                   paginatedJobs.map((job) => (
                     <tr key={job.id} className="job-row">
+                      <td style={{ textAlign: "center" }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedJobIds.includes(job.id)}
+                          onChange={() => handleToggleSelect(job.id)}
+                        />
+                      </td>
                       <td>
                         <div style={{maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
                           {job.job_title}

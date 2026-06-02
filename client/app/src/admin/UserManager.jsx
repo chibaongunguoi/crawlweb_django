@@ -12,6 +12,7 @@ export default function UserManager() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingUserId, setEditingUserId] = useState(null);
   const [filteredUsers, setFilteredUsers] = useState([]);
+  const [selectedUserIds, setSelectedUserIds] = useState([]);
 
   useEffect(() => {
     fetchUsers();
@@ -70,6 +71,68 @@ export default function UserManager() {
     fetchUsers(); // Refresh the list
   };
 
+  const paginatedUsers = filteredUsers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const selectablePaginatedUsers = paginatedUsers.filter((user) => user.role !== 'admin');
+  const isAllCurrentPageSelected =
+    selectablePaginatedUsers.length > 0 && selectablePaginatedUsers.every((user) => selectedUserIds.includes(user.id));
+
+  const handleToggleSelect = (userId) => {
+    setSelectedUserIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    );
+  };
+
+  const handleToggleSelectAll = () => {
+    const pageIds = selectablePaginatedUsers.map((user) => user.id);
+    const isAllSelected = pageIds.length > 0 && pageIds.every((id) => selectedUserIds.includes(id));
+    setSelectedUserIds((prev) =>
+      isAllSelected
+        ? prev.filter((id) => !pageIds.includes(id))
+        : Array.from(new Set([...prev, ...pageIds]))
+    );
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedUserIds.length === 0) {
+      alert('Vui lòng chọn ít nhất một người dùng');
+      return;
+    }
+
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa ${selectedUserIds.length} người dùng đã chọn?`)) {
+      return;
+    }
+
+    try {
+      const results = await Promise.allSettled(
+        selectedUserIds.map((userId) =>
+          fetch(`/api/admin/users/${userId}/`, {
+            method: 'DELETE',
+            credentials: 'include'
+          })
+        )
+      );
+      const failed = results.filter((result) => result.status !== 'fulfilled' || !result.value.ok).length;
+      alert(failed ? `Đã xóa ${selectedUserIds.length - failed} người dùng, lỗi ${failed} người dùng` : 'Xóa hàng loạt người dùng thành công!');
+      setSelectedUserIds([]);
+      fetchUsers();
+    } catch (error) {
+      console.error('Error bulk deleting users:', error);
+      alert('Có lỗi xảy ra khi xóa hàng loạt người dùng');
+    }
+  };
+
+  const handleBulkEdit = () => {
+    if (selectedUserIds.length !== 1) {
+      alert('Vui lòng chọn đúng 1 người dùng để sửa');
+      return;
+    }
+
+    const selectedUser = users.find((user) => user.id === selectedUserIds[0]);
+    if (selectedUser) {
+      handleEdit(selectedUser);
+    }
+  };
+
   const handleDelete = async (userId) => {
     if (!window.confirm('Bạn có chắc chắn muốn xóa người dùng này?')) {
       return;
@@ -111,12 +174,21 @@ export default function UserManager() {
         <div className="users-section">
           <div className="users-header">
             <h2>danh sách tài khoản ({filteredUsers.length})</h2>
-            <button className="refresh-btn" onClick={fetchUsers}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {selectedUserIds.length > 0 && (
+                <>
+                  <button className="delete-company-btn" onClick={handleBulkDelete}>
+                    Xóa đã chọn ({selectedUserIds.length})
+                  </button>
+                </>
+              )}
+              <button className="refresh-btn" onClick={fetchUsers}>
               <svg className="refresh-icon" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd"/>
               </svg>
-              Làm mới
-            </button>
+                Làm mới
+              </button>
+            </div>
           </div>
 
           <UserSearch 
@@ -128,6 +200,14 @@ export default function UserManager() {
             <table className="users-table">
               <thead>
                 <tr>
+                  <th style={{ width: '48px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={isAllCurrentPageSelected}
+                      onChange={handleToggleSelectAll}
+                      title="Chọn tất cả trên trang này"
+                    />
+                  </th>
                   <th>Avatar</th>
                   <th>Tên người dùng</th>
                   <th>Vai trò</th>
@@ -137,18 +217,22 @@ export default function UserManager() {
               <tbody>
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan="4" className="no-users">
+                    <td colSpan="5" className="no-users">
                       Không tìm thấy người dùng nào
                     </td>
                   </tr>
                 ) : (
-                  (() => {
-                    const startIndex = (currentPage - 1) * itemsPerPage;
-                    const endIndex = startIndex + itemsPerPage;
-                    const paginatedUsers = filteredUsers.slice(startIndex, endIndex);
-                    
-                    return paginatedUsers.map((user) => (
+                  paginatedUsers.map((user) => (
                       <tr key={user.id} className="user-row">
+                        <td style={{ textAlign: 'center' }}>
+                          {user.role !== 'admin' && (
+                            <input
+                              type="checkbox"
+                              checked={selectedUserIds.includes(user.id)}
+                              onChange={() => handleToggleSelect(user.id)}
+                            />
+                          )}
+                        </td>
                         <td>
                           <div className="user-avatar">
                             <div className="avatar-circle">
@@ -194,8 +278,7 @@ export default function UserManager() {
                           </div>
                         </td>
                       </tr>
-                    ));
-                  })()
+                    ))
                 )}
               </tbody>
             </table>
