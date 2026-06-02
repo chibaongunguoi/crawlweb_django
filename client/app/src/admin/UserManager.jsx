@@ -12,6 +12,7 @@ export default function UserManager() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingUserId, setEditingUserId] = useState(null);
   const [filteredUsers, setFilteredUsers] = useState([]);
+  const [selectedUserIds, setSelectedUserIds] = useState([]);
 
   useEffect(() => {
     fetchUsers();
@@ -85,6 +86,7 @@ export default function UserManager() {
 
       if (response.ok && data.success) {
         alert('Xóa người dùng thành công!');
+        setSelectedUserIds((prev) => prev.filter((id) => id !== userId));
         fetchUsers();
       } else {
         alert(data.error || 'Có lỗi xảy ra khi xóa người dùng');
@@ -94,6 +96,70 @@ export default function UserManager() {
       alert('Có lỗi xảy ra khi xóa người dùng');
     }
   };
+
+  const handleSelectUser = (userId) => {
+    setSelectedUserIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    );
+  };
+
+  const handleSelectAllUsers = (checked, selectableUsers) => {
+    setSelectedUserIds((prev) => {
+      const pageIds = selectableUsers.map((user) => user.id);
+      if (checked) {
+        return Array.from(new Set([...prev, ...pageIds]));
+      }
+      return prev.filter((id) => !pageIds.includes(id));
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedUserIds.length === 0) return;
+
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa ${selectedUserIds.length} người dùng đã chọn?`)) {
+      return;
+    }
+
+    try {
+      const results = await Promise.allSettled(
+        selectedUserIds.map((userId) =>
+          fetch(`/api/admin/users/${userId}/`, {
+            method: 'DELETE',
+            credentials: 'include'
+          }).then(async (response) => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || data.success === false) {
+              throw new Error(data.error || 'Có lỗi xảy ra khi xóa người dùng');
+            }
+            return userId;
+          })
+        )
+      );
+
+      const failedCount = results.filter((result) => result.status === 'rejected').length;
+      const successCount = selectedUserIds.length - failedCount;
+
+      if (failedCount > 0) {
+        alert(`Đã xóa ${successCount} người dùng. ${failedCount} người dùng xóa thất bại.`);
+      } else {
+        alert(`Đã xóa ${successCount} người dùng thành công!`);
+      }
+
+      setSelectedUserIds([]);
+      fetchUsers();
+    } catch (error) {
+      console.error('Error bulk deleting users:', error);
+      alert('Có lỗi xảy ra khi xóa hàng loạt người dùng');
+    }
+  };
+
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedUsers = filteredUsers.slice(startIndex, endIndex);
+  const selectablePaginatedUsers = paginatedUsers.filter((user) => user.role !== 'admin');
+  const allSelectableUsersSelected =
+    selectablePaginatedUsers.length > 0 &&
+    selectablePaginatedUsers.every((user) => selectedUserIds.includes(user.id));
 
   return (
     <div>
@@ -111,12 +177,23 @@ export default function UserManager() {
         <div className="users-section">
           <div className="users-header">
             <h2>danh sách tài khoản ({filteredUsers.length})</h2>
-            <button className="refresh-btn" onClick={fetchUsers}>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              {selectedUserIds.length > 0 && (
+                <button
+                  className="delete-btn"
+                  onClick={handleBulkDelete}
+                  style={{ padding: '8px 14px' }}
+                >
+                  Xóa đã chọn ({selectedUserIds.length})
+                </button>
+              )}
+              <button className="refresh-btn" onClick={fetchUsers}>
               <svg className="refresh-icon" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd"/>
               </svg>
-              Làm mới
-            </button>
+                Làm mới
+              </button>
+            </div>
           </div>
 
           <UserSearch 
@@ -128,6 +205,15 @@ export default function UserManager() {
             <table className="users-table">
               <thead>
                 <tr>
+                  <th style={{ width: '48px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={allSelectableUsersSelected}
+                      disabled={selectablePaginatedUsers.length === 0}
+                      onChange={(e) => handleSelectAllUsers(e.target.checked, selectablePaginatedUsers)}
+                      title="Chọn tất cả trên trang hiện tại"
+                    />
+                  </th>
                   <th>Avatar</th>
                   <th>Tên người dùng</th>
                   <th>Vai trò</th>
@@ -137,18 +223,23 @@ export default function UserManager() {
               <tbody>
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan="4" className="no-users">
+                    <td colSpan="5" className="no-users">
                       Không tìm thấy người dùng nào
                     </td>
                   </tr>
-                ) : (
-                  (() => {
-                    const startIndex = (currentPage - 1) * itemsPerPage;
-                    const endIndex = startIndex + itemsPerPage;
-                    const paginatedUsers = filteredUsers.slice(startIndex, endIndex);
-                    
-                    return paginatedUsers.map((user) => (
+                  ) : (
+                    paginatedUsers.map((user) => (
                       <tr key={user.id} className="user-row">
+                        <td style={{ textAlign: 'center' }}>
+                          {user.role !== 'admin' && (
+                            <input
+                              type="checkbox"
+                              checked={selectedUserIds.includes(user.id)}
+                              onChange={() => handleSelectUser(user.id)}
+                              title="Chọn người dùng"
+                            />
+                          )}
+                        </td>
                         <td>
                           <div className="user-avatar">
                             <div className="avatar-circle">
@@ -194,8 +285,7 @@ export default function UserManager() {
                           </div>
                         </td>
                       </tr>
-                    ));
-                  })()
+                    ))
                 )}
               </tbody>
             </table>

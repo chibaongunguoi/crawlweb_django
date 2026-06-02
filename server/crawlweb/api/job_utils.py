@@ -223,7 +223,8 @@ def parse_deadline_value(raw: Optional[object]) -> Optional[date]:
             continue
 
         date_text = match.group(0)
-        year_value = match.group(3) if match.lastindex and match.lastindex >= 3 else None
+        year_group_index = 1 if fmt.startswith("%Y") else 3
+        year_value = match.group(year_group_index) if match.lastindex and match.lastindex >= year_group_index else None
         adjusted_fmt = fmt
         if year_value and len(year_value) == 2:
             adjusted_fmt = fmt.replace('%Y', '%y')

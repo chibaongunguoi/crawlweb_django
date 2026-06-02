@@ -8,6 +8,7 @@ export default function JobManager() {
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedJobIds, setSelectedJobIds] = useState([]);
   const itemsPerPage = 20;
 
   useEffect(() => {
@@ -70,6 +71,7 @@ export default function JobManager() {
 
       if (response.ok) {
         alert('Xóa công việc thành công!');
+        setSelectedJobIds((prev) => prev.filter((id) => id !== jobId));
         fetchJobs();
       } else {
         const data = await response.json();
@@ -78,6 +80,62 @@ export default function JobManager() {
     } catch (error) {
       console.error('Error deleting job:', error);
       alert('Có lỗi xảy ra khi xóa công việc');
+    }
+  };
+
+  const handleSelectJob = (jobId) => {
+    setSelectedJobIds((prev) =>
+      prev.includes(jobId) ? prev.filter((id) => id !== jobId) : [...prev, jobId]
+    );
+  };
+
+  const handleSelectAllJobs = (checked, jobsToSelect) => {
+    setSelectedJobIds((prev) => {
+      const pageIds = jobsToSelect.map((job) => job.id);
+      if (checked) {
+        return Array.from(new Set([...prev, ...pageIds]));
+      }
+      return prev.filter((id) => !pageIds.includes(id));
+    });
+  };
+
+  const handleBulkDeleteJobs = async () => {
+    if (selectedJobIds.length === 0) return;
+
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa ${selectedJobIds.length} công việc đã chọn?`)) {
+      return;
+    }
+
+    try {
+      const results = await Promise.allSettled(
+        selectedJobIds.map((jobId) =>
+          fetch(`/api/admin/jobs/${jobId}/`, {
+            method: 'DELETE',
+            credentials: 'include'
+          }).then(async (response) => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(data.error || 'Có lỗi xảy ra khi xóa công việc');
+            }
+            return jobId;
+          })
+        )
+      );
+
+      const failedCount = results.filter((result) => result.status === 'rejected').length;
+      const successCount = selectedJobIds.length - failedCount;
+
+      if (failedCount > 0) {
+        alert(`Đã xóa ${successCount} công việc. ${failedCount} công việc xóa thất bại.`);
+      } else {
+        alert(`Đã xóa ${successCount} công việc thành công!`);
+      }
+
+      setSelectedJobIds([]);
+      fetchJobs();
+    } catch (error) {
+      console.error('Error bulk deleting jobs:', error);
+      alert('Có lỗi xảy ra khi xóa hàng loạt công việc');
     }
   };
 
@@ -96,6 +154,9 @@ export default function JobManager() {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const paginatedJobs = filteredJobs.slice(startIndex, endIndex);
+  const allPaginatedJobsSelected =
+    paginatedJobs.length > 0 &&
+    paginatedJobs.every((job) => selectedJobIds.includes(job.id));
 
   return (
     <div>
@@ -113,12 +174,23 @@ export default function JobManager() {
         <div className="jobs-section">
           <div className="jobs-header">
             <h2>Danh sách công việc ({filteredJobs.length})</h2>
-            <button className="refresh-btn" onClick={fetchJobs}>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              {selectedJobIds.length > 0 && (
+                <button
+                  className="delete-btn"
+                  onClick={handleBulkDeleteJobs}
+                  style={{ padding: '8px 14px' }}
+                >
+                  Xóa đã chọn ({selectedJobIds.length})
+                </button>
+              )}
+              <button className="refresh-btn" onClick={fetchJobs}>
               <svg className="refresh-icon" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd"/>
               </svg>
-              Làm mới
-            </button>
+                Làm mới
+              </button>
+            </div>
           </div>
 
           <div className="search-box">
@@ -135,6 +207,15 @@ export default function JobManager() {
             <table className="jobs-table">
               <thead>
                 <tr>
+                  <th style={{ width: '48px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={allPaginatedJobsSelected}
+                      disabled={paginatedJobs.length === 0}
+                      onChange={(e) => handleSelectAllJobs(e.target.checked, paginatedJobs)}
+                      title="Chọn tất cả trên trang hiện tại"
+                    />
+                  </th>
                   <th>Tên công việc</th>
                   <th>Công ty</th>
                   <th>Địa điểm</th>
@@ -146,13 +227,21 @@ export default function JobManager() {
               <tbody>
                 {paginatedJobs.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="no-jobs">
+                    <td colSpan="7" className="no-jobs">
                       Không tìm thấy công việc nào
                     </td>
                   </tr>
                 ) : (
                   paginatedJobs.map((job) => (
                     <tr key={job.id} className="job-row">
+                      <td style={{ textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedJobIds.includes(job.id)}
+                          onChange={() => handleSelectJob(job.id)}
+                          title="Chọn công việc"
+                        />
+                      </td>
                       <td>
                         <div style={{maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
                           {job.job_title}

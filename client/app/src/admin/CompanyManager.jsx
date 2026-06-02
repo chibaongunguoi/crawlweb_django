@@ -9,6 +9,7 @@ export default function CompanyManager() {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
+  const [selectedCompanyIds, setSelectedCompanyIds] = useState([]);
   const [newCompany, setNewCompany] = useState({
     name: '',
     email: '',
@@ -81,6 +82,7 @@ export default function CompanyManager() {
 
       if (response.ok) {
         alert('Xóa công ty thành công!');
+        setSelectedCompanyIds((prev) => prev.filter((id) => id !== companyId));
         fetchCompanies();
       } else {
         const data = await response.json();
@@ -89,6 +91,62 @@ export default function CompanyManager() {
     } catch (error) {
       console.error('Error deleting company:', error);
       alert('Có lỗi xảy ra khi xóa công ty');
+    }
+  };
+
+  const handleSelectCompany = (companyId) => {
+    setSelectedCompanyIds((prev) =>
+      prev.includes(companyId) ? prev.filter((id) => id !== companyId) : [...prev, companyId]
+    );
+  };
+
+  const handleSelectAllCompanies = (checked, companiesToSelect) => {
+    setSelectedCompanyIds((prev) => {
+      const pageIds = companiesToSelect.map((company) => company.id);
+      if (checked) {
+        return Array.from(new Set([...prev, ...pageIds]));
+      }
+      return prev.filter((id) => !pageIds.includes(id));
+    });
+  };
+
+  const handleBulkDeleteCompanies = async () => {
+    if (selectedCompanyIds.length === 0) return;
+
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa ${selectedCompanyIds.length} công ty đã chọn?`)) {
+      return;
+    }
+
+    try {
+      const results = await Promise.allSettled(
+        selectedCompanyIds.map((companyId) =>
+          fetch(`/api/admin/companies-list/${companyId}/`, {
+            method: 'DELETE',
+            credentials: 'include'
+          }).then(async (response) => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(data.error || 'Có lỗi xảy ra khi xóa công ty');
+            }
+            return companyId;
+          })
+        )
+      );
+
+      const failedCount = results.filter((result) => result.status === 'rejected').length;
+      const successCount = selectedCompanyIds.length - failedCount;
+
+      if (failedCount > 0) {
+        alert(`Đã xóa ${successCount} công ty. ${failedCount} công ty xóa thất bại.`);
+      } else {
+        alert(`Đã xóa ${successCount} công ty thành công!`);
+      }
+
+      setSelectedCompanyIds([]);
+      fetchCompanies();
+    } catch (error) {
+      console.error('Error bulk deleting companies:', error);
+      alert('Có lỗi xảy ra khi xóa hàng loạt công ty');
     }
   };
 
@@ -138,6 +196,9 @@ export default function CompanyManager() {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const paginatedCompanies = filteredCompanies.slice(startIndex, endIndex);
+  const allPaginatedCompaniesSelected =
+    paginatedCompanies.length > 0 &&
+    paginatedCompanies.every((company) => selectedCompanyIds.includes(company.id));
 
   return (
     <div>
@@ -156,6 +217,14 @@ export default function CompanyManager() {
           <div className="companies-header">
             <h2>Danh sách công ty ({filteredCompanies.length})</h2>
             <div style={{display: 'flex', gap: '12px'}}>
+              {selectedCompanyIds.length > 0 && (
+                <button
+                  className="delete-btn"
+                  onClick={handleBulkDeleteCompanies}
+                >
+                  Xóa đã chọn ({selectedCompanyIds.length})
+                </button>
+              )}
               <button 
                 className="refresh-btn" 
                 onClick={() => setShowAddForm(true)}
@@ -280,6 +349,15 @@ export default function CompanyManager() {
             <table className="companies-table">
               <thead>
                 <tr>
+                  <th style={{ width: '48px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={allPaginatedCompaniesSelected}
+                      disabled={paginatedCompanies.length === 0}
+                      onChange={(e) => handleSelectAllCompanies(e.target.checked, paginatedCompanies)}
+                      title="Chọn tất cả trên trang hiện tại"
+                    />
+                  </th>
                   <th>Tên công ty</th>
                   <th>Email</th>
                   <th>Số điện thoại</th>
@@ -290,13 +368,21 @@ export default function CompanyManager() {
               <tbody>
                 {paginatedCompanies.length === 0 ? (
                   <tr>
-                    <td colSpan="5" className="no-companies">
+                    <td colSpan="6" className="no-companies">
                       Không tìm thấy công ty nào
                     </td>
                   </tr>
                 ) : (
                   paginatedCompanies.map((company) => (
                     <tr key={company.id} className="company-row">
+                      <td style={{ textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedCompanyIds.includes(company.id)}
+                          onChange={() => handleSelectCompany(company.id)}
+                          title="Chọn công ty"
+                        />
+                      </td>
                       <td>{company.name}</td>
                       <td>{company.email || 'N/A'}</td>
                       <td>{company.phone || 'N/A'}</td>
