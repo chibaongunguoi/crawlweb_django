@@ -176,7 +176,7 @@ class ScrapeManager:
             print(f"[!! ERROR !!] ScrapeManager.crawl_urls: {e}")
             return []
 
-    def sendProgressUpdate(self, progress_callback_url: str, jobId: str, processed: int, total: int, current_url: str = None):
+    def sendProgressUpdate(self, progress_callback_url: str | None, jobId: str | None, processed: int, total: int, current_url: str | None = None):
         """Send progress update to callback URL"""
         if not progress_callback_url or not jobId:
             return
@@ -211,7 +211,7 @@ class ScrapeManager:
         except Exception as e:
             print(f"Error sending progress update: {e}")
 
-    def scrapeUrlsWithProgress(self, urls: list[str], progress_callback_url: str = None, metadata: dict = {}) -> list:
+    def scrapeUrlsWithProgress(self, urls: list[str], progress_callback_url: str | None = None, metadata: dict = {}) -> list:
         """Crawl the provided URLs with progress updates"""
         if not urls:
             print(
@@ -271,7 +271,7 @@ class ScrapeManager:
             return []
 
     def scrapeUrlsWithCallback(
-        self, urls: list[str], callback_url: str, progress_callback_url: str = None, metadata: dict = {}
+        self, urls: list[str], callback_url: str, progress_callback_url: str | None = None, metadata: dict = {}
     ):
         try:
             data = self.scrapeUrlsWithProgress(urls, progress_callback_url, metadata)

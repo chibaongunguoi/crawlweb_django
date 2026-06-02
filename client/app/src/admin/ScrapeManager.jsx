@@ -1,7 +1,31 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './admin.css';
 
+const SCHEDULE_TYPE_LABELS = { daily: 'Hằng ngày', weekly: 'Hằng tuần', cron: 'Cron' };
+const DAY_LABELS = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'];
+const DEFAULT_SEED_URL = 'https://itworks.asia/job/';
+const DEVWORK_SEED_URL = 'https://devwork.vn/viec-lam';
+
+const SOURCE_LABELS = {
+  itworks: 'itworks.asia',
+  devwork: 'Devwork',
+};
+
+const emptyScheduleForm = {
+  name: '',
+  source: 'itworks',
+  urls: DEFAULT_SEED_URL,
+  crawlMode: 'crawl_then_scrape',
+  scheduleType: 'daily',
+  timeOfDay: '09:00',
+  dayOfWeek: '1',
+  cronExpression: '',
+  maxDetailUrls: '',
+  active: true,
+};
+
 const ScrapeManager = () => {
+  const [activeTab, setActiveTab] = useState('manual');
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -14,6 +38,14 @@ const ScrapeManager = () => {
   const [message, setMessage] = useState({ type: '', text: '' });
   const [selectedJobIds, setSelectedJobIds] = useState([]);
   const pollingIntervalRef = useRef(null);
+
+  // Schedule state
+  const [schedules, setSchedules] = useState([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [showScheduleForm, setShowScheduleForm] = useState(false);
+  const [scheduleForm, setScheduleForm] = useState({ ...emptyScheduleForm });
+  const [editingScheduleId, setEditingScheduleId] = useState(null);
+  const [scheduleError, setScheduleError] = useState('');
 
   // Show toast notification
   const showToast = (type, message) => {
@@ -45,9 +77,28 @@ const ScrapeManager = () => {
     }
   };
 
+  // Fetch schedules
+  const fetchSchedules = useCallback(async () => {
+    setScheduleLoading(true);
+    try {
+      const response = await fetch('/api/scrape/schedules/', {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSchedules(data.schedules || []);
+      }
+    } catch (err) {
+      console.error('Error fetching schedules:', err);
+    } finally {
+      setScheduleLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchJobs();
-  }, []);
+    fetchSchedules();
+  }, [fetchSchedules]);
 
   // Poll for active job status
   useEffect(() => {
@@ -69,7 +120,6 @@ const ScrapeManager = () => {
           const data = await response.json();
           const job = data.job;
           
-          // Update job in list
           setJobs(prevJobs => {
             const index = prevJobs.findIndex(j => j.id === activeJobId);
             if (index >= 0) {
@@ -80,7 +130,6 @@ const ScrapeManager = () => {
             return [job, ...prevJobs];
           });
           
-          // Update progress message if job is processing
           if (job.status === 'processing' && job.totalUrls > 0) {
             const progressPercent = job.progress || 0;
             const processed = job.processedUrls || 0;
@@ -91,7 +140,6 @@ const ScrapeManager = () => {
             });
           }
           
-          // Stop polling if job is complete or failed
           if (job.status === 'completed' || job.status === 'failed') {
             setActiveJobId(null);
             setSubmitting(false);
@@ -114,11 +162,9 @@ const ScrapeManager = () => {
       }
     };
 
-    // Start interval
     pollingIntervalRef.current = setInterval(pollJobStatus, 3000);
-    pollJobStatus(); // Call immediately
+    pollJobStatus();
 
-    // Cleanup
     return () => {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
@@ -131,7 +177,6 @@ const ScrapeManager = () => {
     e.preventDefault();
     setMessage({ type: '', text: '' });
     
-    // Parse URLs from input (one per line)
     const urls = urlInput
       .split('\n')
       .map(url => url.trim())
@@ -148,9 +193,7 @@ const ScrapeManager = () => {
     try {
       const response = await fetch('/api/scrape/upload/', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ urls }),
       });
@@ -161,13 +204,9 @@ const ScrapeManager = () => {
       }
       
       const data = await response.json();
-      
-      // Start polling for this job
       setActiveJobId(data.jobId);
       setPolling(true);
       setMessage({ type: 'info', text: `Đang xử lý ${urls.length} URL...` });
-      
-      // Refresh job list
       fetchJobs();
     } catch (err) {
       console.error('Error submitting URLs:', err);
@@ -254,11 +293,10 @@ const ScrapeManager = () => {
 
   const handleRetry = async (jobId) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/scrape/jobs/${jobId}/retry/`, {
+      const response = await fetch(`/api/scrape/jobs/${jobId}/retry/`, {
         method: 'POST',
         credentials: 'include',
       });
-
       if (response.ok) {
         showToast('success', 'Đã xếp lại vào hàng đợi để retry');
         fetchJobs();
@@ -284,13 +322,11 @@ const ScrapeManager = () => {
       const response = await fetch(`/api/jobs/?url=${encodeURIComponent(jobUrl)}`, {
         credentials: 'include',
       });
-      
       if (response.ok) {
         const data = await response.json();
-        const jobs = data.data || data.jobs || [];
-        if (jobs && jobs.length > 0) {
-          // Open job detail in new tab - adjust URL based on your routing
-          window.open(`/job/${jobs[0]._id}`, '_blank');
+        const jobsList = data.data || data.jobs || [];
+        if (jobsList && jobsList.length > 0) {
+          window.open(`/job/${jobsList[0]._id}`, '_blank');
         } else {
           showToast('error', 'Không tìm thấy công việc');
         }
@@ -303,6 +339,134 @@ const ScrapeManager = () => {
     }
   };
 
+  // ---- Schedule handlers ----
+  const openCreateSchedule = () => {
+    setEditingScheduleId(null);
+    setScheduleForm({ ...emptyScheduleForm });
+    setScheduleError('');
+    setShowScheduleForm(true);
+  };
+
+  const openEditSchedule = (schedule) => {
+    setEditingScheduleId(schedule.id);
+    setScheduleForm({
+      name: schedule.name || '',
+      source: schedule.source || 'itworks',
+      urls: (schedule.urls || []).join('\n'),
+      crawlMode: schedule.crawlMode || 'crawl_then_scrape',
+      scheduleType: schedule.scheduleType || 'daily',
+      timeOfDay: schedule.timeOfDay || '09:00',
+      dayOfWeek: schedule.dayOfWeek != null ? String(schedule.dayOfWeek) : '1',
+      cronExpression: schedule.cronExpression || '',
+      maxDetailUrls: schedule.maxDetailUrls != null ? String(schedule.maxDetailUrls) : '',
+      active: schedule.active,
+    });
+    setScheduleError('');
+    setShowScheduleForm(true);
+  };
+
+  const handleScheduleSubmit = async (e) => {
+    e.preventDefault();
+    setScheduleError('');
+
+    const payload = {
+      name: scheduleForm.name,
+      source: scheduleForm.source,
+      urls: scheduleForm.urls.split('\n').map(u => u.trim()).filter(Boolean),
+      crawlMode: scheduleForm.crawlMode,
+      scheduleType: scheduleForm.scheduleType,
+      timeOfDay: scheduleForm.timeOfDay,
+      active: scheduleForm.active,
+    };
+    if (scheduleForm.scheduleType === 'weekly') {
+      payload.dayOfWeek = parseInt(scheduleForm.dayOfWeek, 10);
+    }
+    if (scheduleForm.scheduleType === 'cron') {
+      payload.cronExpression = scheduleForm.cronExpression;
+    }
+    if (scheduleForm.maxDetailUrls) {
+      payload.maxDetailUrls = parseInt(scheduleForm.maxDetailUrls, 10);
+    }
+
+    try {
+      const url = editingScheduleId
+        ? `/api/scrape/schedules/${editingScheduleId}/`
+        : '/api/scrape/schedules/';
+      const method = editingScheduleId ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        setScheduleError(data.error || 'Có lỗi xảy ra');
+        return;
+      }
+
+      showToast('success', editingScheduleId ? 'Đã cập nhật lịch' : 'Đã tạo lịch mới');
+      setShowScheduleForm(false);
+      fetchSchedules();
+    } catch (err) {
+      setScheduleError('Có lỗi xảy ra: ' + err.message);
+    }
+  };
+
+  const handleToggleSchedule = async (scheduleId) => {
+    try {
+      const response = await fetch(`/api/scrape/schedules/${scheduleId}/toggle/`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSchedules(prev => prev.map(s => s.id === scheduleId ? { ...s, active: data.active, nextRunAt: data.schedule?.nextRunAt } : s));
+        showToast('success', data.active ? 'Đã bật lịch' : 'Đã tắt lịch');
+      }
+    } catch (err) {
+      showToast('error', 'Lỗi khi thay đổi trạng thái');
+    }
+  };
+
+  const handleRunScheduleNow = async (scheduleId) => {
+    try {
+      const response = await fetch(`/api/scrape/schedules/${scheduleId}/run/`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        showToast('success', `Đã tạo job: ${data.jobId}`);
+        fetchSchedules();
+        fetchJobs();
+      } else {
+        const data = await response.json();
+        showToast('error', data.error || 'Không thể chạy lịch');
+      }
+    } catch (err) {
+      showToast('error', 'Có lỗi xảy ra');
+    }
+  };
+
+  const handleDeleteSchedule = async (scheduleId) => {
+    if (!window.confirm('Bạn có chắc muốn xóa lịch này?')) return;
+    try {
+      const response = await fetch(`/api/scrape/schedules/${scheduleId}/`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (response.ok) {
+        showToast('success', 'Đã xóa lịch');
+        setSchedules(prev => prev.filter(s => s.id !== scheduleId));
+      }
+    } catch (err) {
+      showToast('error', 'Lỗi khi xóa lịch');
+    }
+  };
+
   const getStatusBadge = (status) => {
     const statusConfig = {
       pending: { label: 'Đang chờ', color: '#f59e0b' },
@@ -312,9 +476,7 @@ const ScrapeManager = () => {
       completed: { label: 'Hoàn thành', color: '#10b981' },
       failed: { label: 'Thất bại', color: '#ef4444' }
     };
-
     const config = statusConfig[status] || { label: status, color: '#6b7280' };
-
     return (
       <span style={{
         display: 'inline-block',
@@ -334,39 +496,36 @@ const ScrapeManager = () => {
     if (!dateString) return '-';
     const date = new Date(dateString);
     return date.toLocaleString('vi-VN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit'
     });
   };
+
+  // ---- Tab Button Style ----
+  const tabBtn = (tab) => ({
+    padding: '10px 24px',
+    border: 'none',
+    borderBottom: activeTab === tab ? '3px solid #3b82f6' : '3px solid transparent',
+    backgroundColor: 'transparent',
+    color: activeTab === tab ? '#3b82f6' : '#6b7280',
+    fontSize: '15px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  });
 
   return (
     <div className="admin-content">
       {/* Toast Notification */}
       {toast.show && (
         <div style={{
-          position: 'fixed',
-          top: '16px',
-          right: '16px',
-          zIndex: 1000,
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
+          position: 'fixed', top: '16px', right: '16px', zIndex: 1000,
+          display: 'flex', alignItems: 'center', gap: '8px',
           padding: '12px 16px',
           backgroundColor: toast.type === 'success' ? '#10b981' : '#ef4444',
-          color: 'white',
-          borderRadius: '8px',
+          color: 'white', borderRadius: '8px',
           boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
         }}>
-          <svg style={{ width: '20px', height: '20px' }} fill="currentColor" viewBox="0 0 20 20">
-            {toast.type === 'success' ? (
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
-            ) : (
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd"/>
-            )}
-          </svg>
           <span style={{ fontWeight: '500' }}>{toast.message}</span>
         </div>
       )}
@@ -772,21 +931,9 @@ const ScrapeManager = () => {
                 </div>
               ))}
             </div>
-
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '24px' }}>
-              <button
-                onClick={closeViewModal}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: '#6b7280',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  cursor: 'pointer',
-                }}
-              >
+              <button onClick={closeViewModal}
+                style={{ padding: '10px 20px', backgroundColor: '#6b7280', color: 'white', border: 'none', borderRadius: '6px', fontSize: '14px', cursor: 'pointer' }}>
                 Đóng
               </button>
             </div>
