@@ -20,6 +20,7 @@ except Exception:  # pragma: no cover - croniter optional at import time
 SCRAPER_HOST = os.getenv('SCRAPER_HOST', 'localhost')
 SCRAPER_PORT = os.getenv('SCRAPER_PORT', '37001')
 SCRAPER_URL = f'http://{SCRAPER_HOST}:{SCRAPER_PORT}/api/scrape'
+SCRAPER_CRAWL_SCRAPE_URL = f'http://{SCRAPER_HOST}:{SCRAPER_PORT}/api/crawl-scrape'
 CALLBACK_BASE_URL = os.getenv('SCRAPER_CALLBACK_BASE_URL', 'http://localhost:8000')
 SCRAPE_CONCURRENCY = int(os.getenv('SCRAPE_CONCURRENCY', '2'))
 SCRAPE_MAX_RETRIES = int(os.getenv('SCRAPE_MAX_RETRIES', '3'))
@@ -105,6 +106,35 @@ class ScrapeQueueManager:
     def enqueue(self, job_id: str):
         self.queue.put(job_id)
 
+    def enqueue_schedule(self, schedule: ScrapeSchedule, run_at: datetime | None = None) -> ScrapeJob:
+        now = run_at or timezone.now()
+        source = getattr(schedule, 'source', 'manual') or 'manual'
+        crawl_mode = getattr(schedule, 'crawlMode', 'detail_urls') or 'detail_urls'
+        urls = schedule.urls or []
+        metadata = {
+            'scheduleId': str(schedule.pk),
+            'source': source,
+            'crawlMode': crawl_mode,
+            'scheduledRunAt': now.isoformat(),
+        }
+        max_detail_urls = getattr(schedule, 'maxDetailUrls', None)
+        if max_detail_urls:
+            metadata['maxDetailUrls'] = max_detail_urls
+
+        job = ScrapeJob.objects.create(
+            urls=urls,
+            status='queued',
+            totalUrls=len(urls),
+            processedUrls=0,
+            progress=0,
+            retryCount=0,
+            maxRetries=SCRAPE_MAX_RETRIES,
+            retryDelay=SCRAPE_RETRY_DELAY,
+            metadata=metadata,
+        )
+        self.enqueue(str(job.pk))
+        return job
+
     def schedule_retry(self, job: ScrapeJob, error_message: str):
         job.retryCount = (job.retryCount or 0) + 1
         job.lastError = error_message
@@ -164,18 +194,25 @@ class ScrapeQueueManager:
         if not base_url:
             base_url = CALLBACK_BASE_URL
 
+        job_metadata = job.metadata if isinstance(job.metadata, dict) else {}
+        metadata = {
+            **job_metadata,
+            'jobId': str(job.pk),
+            'start_at': time.time(),
+        }
         payload = {
             'urls': job.urls,
             'callback_url': f'{base_url}/api/scrape/result/',
             'progress_callback_url': f'{base_url}/api/scrape/progress/',
-            'metadata': {
-                'jobId': str(job.pk),
-                'start_at': time.time(),
-            },
+            'metadata': metadata,
         }
+        if metadata.get('maxDetailUrls'):
+            payload['max_detail_urls'] = metadata.get('maxDetailUrls')
+
+        target_url = SCRAPER_CRAWL_SCRAPE_URL if metadata.get('crawlMode') == 'crawl_then_scrape' else SCRAPER_URL
 
         try:
-            response = requests.post(SCRAPER_URL, json=payload, timeout=SCRAPE_REQUEST_TIMEOUT)
+            response = requests.post(target_url, json=payload, timeout=SCRAPE_REQUEST_TIMEOUT)
             response.raise_for_status()
         except Exception as exc:
             self.schedule_retry(job, f'Failed to start scraper service: {exc}')
@@ -189,29 +226,27 @@ class ScrapeQueueManager:
                 self.enqueue(str(job.pk))
             time.sleep(SCRAPE_RETRY_POLL_SECONDS)
 
+    def process_due_schedules(self, now: datetime | None = None):
+        now = now or timezone.now()
+        due_schedules = ScrapeSchedule.objects.filter(active=True, nextRunAt__lte=now)
+
+        for schedule in due_schedules:
+            run_marker = schedule.nextRunAt.isoformat() if schedule.nextRunAt else now.isoformat()
+            existing = ScrapeJob.objects.filter(
+                metadata__scheduleId=str(schedule.pk),
+                metadata__scheduledRunAt=run_marker,
+                status__in=['queued', 'processing', 'pending', 'retrying'],
+            ).first()
+            if not existing:
+                self.enqueue_schedule(schedule, schedule.nextRunAt or now)
+
+            schedule.lastRunAt = now
+            schedule.nextRunAt = compute_next_run(schedule, now + timedelta(seconds=1))
+            schedule.save(update_fields=['lastRunAt', 'nextRunAt'])
+
     def _schedule_loop(self):
         while self.running:
-            now = timezone.now()
-            due_schedules = ScrapeSchedule.objects.filter(active=True, nextRunAt__lte=now)
-
-            for schedule in due_schedules:
-                job = ScrapeJob.objects.create(
-                    urls=schedule.urls,
-                    status='queued',
-                    totalUrls=len(schedule.urls or []),
-                    processedUrls=0,
-                    progress=0,
-                    retryCount=0,
-                    maxRetries=SCRAPE_MAX_RETRIES,
-                    retryDelay=SCRAPE_RETRY_DELAY,
-                    metadata={'scheduleId': str(schedule.pk)},
-                )
-                self.enqueue(str(job.pk))
-
-                schedule.lastRunAt = now
-                schedule.nextRunAt = compute_next_run(schedule, now + timedelta(seconds=1))
-                schedule.save(update_fields=['lastRunAt', 'nextRunAt'])
-
+            self.process_due_schedules()
             time.sleep(SCRAPE_SCHEDULE_POLL_SECONDS)
 
 

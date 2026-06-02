@@ -239,11 +239,18 @@ export default function Header() {
                   </a>
                   <ul className="sub-menu user-menu">
                     {user.role !== 'admin' && (
-                      <li>
-                        <Link to="/user/profile" className="">
-                          Thông tin tài khoản
-                        </Link>
-                      </li>
+                      <>
+                        <li>
+                          <Link to="/user/profile" className="">
+                            Thông tin tài khoản
+                          </Link>
+                        </li>
+                        <li>
+                          <Link to="/user/applications" className="">
+                            Đơn ứng tuyển của tôi
+                          </Link>
+                        </li>
+                      </>
                     )}
                     <li>
                       <a href="#" onClick={logOut} className="">

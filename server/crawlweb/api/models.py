@@ -39,7 +39,15 @@ class JobDetail(models.Model):
         max_length=500,
         unique=True,
         db_index=True,
-        help_text="URL của công việc"
+        help_text="URL gốc/canonical của công việc"
+    )
+    url_hash = models.CharField(
+        max_length=64,
+        unique=True,
+        db_index=True,
+        blank=True,
+        null=True,
+        help_text="SHA-256 hash của URL đã chuẩn hóa để chống duplicate"
     )
     source = models.CharField(
         max_length=100,
@@ -437,6 +445,11 @@ class ScrapeJob(models.Model):
 
 
 class ScrapeSchedule(models.Model):
+    CRAWL_MODE_CHOICES = [
+        ('detail_urls', 'Detail URLs'),
+        ('crawl_then_scrape', 'Crawl then Scrape'),
+    ]
+
     name = models.CharField(
         max_length=200,
         blank=True,
@@ -446,6 +459,22 @@ class ScrapeSchedule(models.Model):
     urls = models.JSONField(
         default=list,
         help_text="Danh sách URLs cần crawl"
+    )
+    source = models.CharField(
+        max_length=50,
+        default='manual',
+        help_text="Nguồn crawl (itworks, devwork, topcv, manual)"
+    )
+    crawlMode = models.CharField(
+        max_length=20,
+        choices=CRAWL_MODE_CHOICES,
+        default='detail_urls',
+        help_text="Chế độ crawl: detail_urls (scrape trực tiếp) hoặc crawl_then_scrape (crawl list rồi scrape detail)"
+    )
+    maxDetailUrls = models.IntegerField(
+        blank=True,
+        null=True,
+        help_text="Giới hạn số lượng detail URL khi crawl_then_scrape"
     )
     scheduleType = models.CharField(
         max_length=20,
