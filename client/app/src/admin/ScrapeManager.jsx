@@ -4,6 +4,12 @@ import './admin.css';
 const SCHEDULE_TYPE_LABELS = { daily: 'Hằng ngày', weekly: 'Hằng tuần', cron: 'Cron' };
 const DAY_LABELS = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'];
 const DEFAULT_SEED_URL = 'https://itworks.asia/job/';
+const DEVWORK_SEED_URL = 'https://devwork.vn/viec-lam';
+
+const SOURCE_LABELS = {
+  itworks: 'itworks.asia',
+  devwork: 'Devwork',
+};
 
 const emptyScheduleForm = {
   name: '',
@@ -629,9 +635,18 @@ const ScrapeManager = () => {
                   </div>
                   <div style={{ marginBottom: '14px' }}>
                     <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500', fontSize: '14px' }}>Nguồn</label>
-                    <select value={scheduleForm.source} onChange={e => setScheduleForm(f => ({ ...f, source: e.target.value }))}
+                    <select value={scheduleForm.source} onChange={e => {
+                      const newSource = e.target.value;
+                      setScheduleForm(f => ({
+                        ...f,
+                        source: newSource,
+                        urls: newSource === 'devwork' ? DEVWORK_SEED_URL : f.urls,
+                        crawlMode: newSource === 'devwork' ? 'crawl_then_scrape' : f.crawlMode,
+                      }));
+                    }}
                       style={{ width: '100%', padding: '10px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '14px' }}>
                       <option value="itworks">itworks.asia</option>
+                      <option value="devwork">Devwork</option>
                     </select>
                   </div>
                   <div style={{ marginBottom: '14px' }}>
@@ -739,7 +754,7 @@ const ScrapeManager = () => {
                   {schedules.map((s, idx) => (
                     <tr key={s.id} style={{ borderTop: idx > 0 ? '1px solid #e5e7eb' : 'none' }}>
                       <td style={{ padding: '12px 16px', fontSize: '14px', fontWeight: '500', color: '#1f2937' }}>{s.name || '-'}</td>
-                      <td style={{ padding: '12px 16px', fontSize: '13px', color: '#6b7280' }}>{s.source || '-'}</td>
+                      <td style={{ padding: '12px 16px', fontSize: '13px', color: '#6b7280' }}>{SOURCE_LABELS[s.source] || s.source || '-'}</td>
                       <td style={{ padding: '12px 16px', fontSize: '12px', color: '#6b7280', maxWidth: '200px' }}>
                         <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={(s.urls || []).join('\n')}>
                           {(s.urls || []).join(', ')}

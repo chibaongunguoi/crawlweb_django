@@ -10,7 +10,7 @@
 #   1. Pulls latest code from GitHub
 #   2. Installs updated dependencies (backend + frontend)
 #   3. Re-builds frontend
-#   4. Runs collectstatic
+#   4. Runs Django migrations and collectstatic
 #   5. Restarts services
 # ============================================================
 
@@ -105,11 +105,12 @@ npm run build
 # ============================================================
 # STEP 4: Django maintenance
 # ============================================================
-log "Step 4/5: Django collectstatic..."
+log "Step 4/5: Django migrate and collectstatic..."
 
 cd "${PROJECT_DIR}/server"
 source myworld/bin/activate
 cd "${PROJECT_DIR}/server/crawlweb"
+python manage.py migrate --noinput
 python manage.py collectstatic --noinput 2>/dev/null || warn "collectstatic skipped (may not be configured)"
 deactivate
 

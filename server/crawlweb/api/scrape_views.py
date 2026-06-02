@@ -26,10 +26,22 @@ SCRAPE_RETRY_DELAY = int(os.getenv('SCRAPE_RETRY_DELAY', '30'))
 ITWORKS_ALLOWED_HOSTS = {'itworks.asia', 'www.itworks.asia', 'itwork.asia', 'www.itwork.asia'}
 DEFAULT_ITWORKS_SEED_URL = 'https://itworks.asia/job/'
 
+DEVWORK_ALLOWED_HOSTS = {
+    'devwork.vn', 'www.devwork.vn',
+    'devwork.com', 'www.devwork.com',
+    'jobs.devwork.vn', 'jobs.devwork.com',
+}
+DEFAULT_DEVWORK_SEED_URL = 'https://devwork.vn/viec-lam'
+
 
 def _normalize_schedule_urls(urls, source='manual'):
     if not urls:
-        urls = [DEFAULT_ITWORKS_SEED_URL] if source == 'itworks' else []
+        if source == 'itworks':
+            urls = [DEFAULT_ITWORKS_SEED_URL]
+        elif source == 'devwork':
+            urls = [DEFAULT_DEVWORK_SEED_URL]
+        else:
+            urls = []
     if not isinstance(urls, list):
         return []
     return [str(url).strip() for url in urls if str(url).strip()]
@@ -41,6 +53,16 @@ def _validate_itworks_urls(urls):
         if not parsed.scheme or not parsed.hostname:
             parsed = urlparse(f'https://{url.lstrip("/")}')
         if (parsed.hostname or '').lower() not in ITWORKS_ALLOWED_HOSTS:
+            return False
+    return True
+
+
+def _validate_devwork_urls(urls):
+    for url in urls:
+        parsed = urlparse(url)
+        if not parsed.scheme or not parsed.hostname:
+            parsed = urlparse(f'https://{url.lstrip("/")}')
+        if (parsed.hostname or '').lower() not in DEVWORK_ALLOWED_HOSTS:
             return False
     return True
 
@@ -58,6 +80,9 @@ def _validate_schedule_payload(payload, partial=False):
 
     if source == 'itworks' and urls and not _validate_itworks_urls(urls):
         return None, 'itworks schedules only allow itworks.asia/itwork.asia URLs'
+
+    if source == 'devwork' and urls and not _validate_devwork_urls(urls):
+        return None, 'devwork schedules only allow devwork.vn/devwork.com URLs'
 
     schedule_type = (payload.get('scheduleType') or ('weekly' if partial else 'daily')).strip().lower()
     if schedule_type not in {'daily', 'weekly', 'cron'}:
@@ -361,6 +386,8 @@ def scrape_result(request):
 
             # Save each job to JobDetail collection
             saved_count = 0
+            skipped_expired = 0
+            today = datetime.now().date()
             for job_data in job_urls:
                 try:
                     # Check if job already exists by canonical URL hash.
@@ -378,7 +405,14 @@ def scrape_result(request):
                     if not raw_deadline:
                         raw_deadline = job_data.get('deadline')
                     deadline_value = parse_deadline_value(raw_deadline)
-                        
+
+                    # Skip jobs whose deadline has already passed.
+                    if deadline_value is not None and deadline_value < today:
+                        skipped_expired += 1
+                        logger.info(f"Skipping expired job (deadline={deadline_value}): {normalized_url}")
+                        # If an old record exists, do NOT overwrite it with stale data.
+                        continue
+
                     # Create or update JobDetail idempotently by canonical URL hash.
                     job_detail, created = JobDetail.objects.update_or_create(
                         url_hash=url_hash,
@@ -405,7 +439,11 @@ def scrape_result(request):
                 except Exception as e:
                     logger.error(f"Error saving job {job_data.get('url')}: {str(e)}")
             
-            logger.info(f"Job {job_id} completed with {len(job_urls)} jobs, saved {saved_count} to database")
+            scrape_job.jobCount = saved_count
+            logger.info(
+                f"Job {job_id} completed with {len(job_urls)} jobs, "
+                f"saved {saved_count} to database, skipped {skipped_expired} expired"
+            )
         else:
             error_message = data.get('message', 'Unknown error')
             logger.error(f"Job {job_id} failed: {error_message}")

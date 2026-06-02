@@ -240,3 +240,216 @@ class ScrapeCallbackTests(TestCase):
 		self.assertEqual(job.status, 'completed')
 		self.assertEqual(job.urls, [first_url, second_url])
 		self.assertEqual(job.metadata['detailUrls'], [first_url, second_url])
+
+	def test_create_schedule_accepts_valid_devwork_host(self):
+		response = self.client.post(
+			'/api/scrape/schedules/',
+			data={
+				'name': 'Devwork daily',
+				'source': 'devwork',
+				'crawlMode': 'crawl_then_scrape',
+				'urls': ['https://devwork.vn/viec-lam'],
+				'scheduleType': 'daily',
+				'timeOfDay': '09:00',
+				'active': True,
+			},
+			content_type='application/json',
+		)
+
+		self.assertEqual(response.status_code, 201)
+		schedule = ScrapeSchedule.objects.get(name='Devwork daily')
+		self.assertEqual(schedule.source, 'devwork')
+		self.assertEqual(schedule.urls, ['https://devwork.vn/viec-lam'])
+
+	def test_create_schedule_rejects_invalid_devwork_host(self):
+		response = self.client.post(
+			'/api/scrape/schedules/',
+			data={
+				'name': 'Invalid devwork',
+				'source': 'devwork',
+				'crawlMode': 'crawl_then_scrape',
+				'urls': ['https://example.com/viec-lam/123/python'],
+				'scheduleType': 'daily',
+				'timeOfDay': '09:00',
+				'active': True,
+			},
+			content_type='application/json',
+		)
+
+		self.assertEqual(response.status_code, 400)
+
+	def test_create_schedule_uses_default_devwork_seed_when_urls_empty(self):
+		response = self.client.post(
+			'/api/scrape/schedules/',
+			data={
+				'name': 'Default devwork seed',
+				'source': 'devwork',
+				'crawlMode': 'crawl_then_scrape',
+				'urls': [],
+				'scheduleType': 'daily',
+				'timeOfDay': '09:00',
+				'active': True,
+			},
+			content_type='application/json',
+		)
+
+		self.assertEqual(response.status_code, 201)
+		schedule = ScrapeSchedule.objects.get(name='Default devwork seed')
+		self.assertEqual(schedule.urls, ['https://devwork.vn/viec-lam'])
+
+	def test_due_devwork_schedule_creates_job_with_metadata(self):
+		now = timezone.now()
+		schedule = ScrapeSchedule.objects.create(
+			name='Due devwork',
+			source='devwork',
+			crawlMode='crawl_then_scrape',
+			urls=['https://devwork.vn/viec-lam'],
+			scheduleType='daily',
+			timeOfDay='09:00',
+			maxDetailUrls=5,
+			active=True,
+			nextRunAt=now - timedelta(minutes=1),
+		)
+		manager = ScrapeQueueManager()
+
+		manager.process_due_schedules(now)
+
+		job = ScrapeJob.objects.get()
+		self.assertEqual(job.metadata['scheduleId'], str(schedule.pk))
+		self.assertEqual(job.metadata['source'], 'devwork')
+		self.assertEqual(job.metadata['crawlMode'], 'crawl_then_scrape')
+		self.assertEqual(job.metadata['maxDetailUrls'], 5)
+		self.assertIn('scheduledRunAt', job.metadata)
+
+	def test_scrape_result_saves_future_and_today_deadlines_skips_expired(self):
+		today = timezone.localdate()
+		job = ScrapeJob.objects.create(
+			urls=['https://devwork.vn/viec-lam'],
+			status='processing',
+			totalUrls=3,
+			processedUrls=0,
+			progress=0,
+		)
+
+		response = self.client.post(
+			'/api/scrape/result/',
+			data={
+				'status': 'success',
+				'metadata': {
+					'jobId': str(job.pk),
+					'detailUrls': [
+						'https://devwork.vn/viec-lam/1/future',
+						'https://devwork.vn/viec-lam/2/today',
+						'https://devwork.vn/viec-lam/3/expired',
+					],
+				},
+				'data': [
+					{
+						'url': 'https://devwork.vn/viec-lam/1/future',
+						'job_title': 'Future job',
+						'company_name': 'Devwork A',
+						'province': 'Ha Noi',
+						'deadline': (today + timedelta(days=7)).isoformat(),
+					},
+					{
+						'url': 'https://devwork.vn/viec-lam/2/today',
+						'job_title': 'Today job',
+						'company_name': 'Devwork B',
+						'province': 'Ho Chi Minh',
+						'deadline': today.isoformat(),
+					},
+					{
+						'url': 'https://devwork.vn/viec-lam/3/expired',
+						'job_title': 'Expired job',
+						'company_name': 'Devwork C',
+						'province': 'Da Nang',
+						'deadline': (today - timedelta(days=1)).isoformat(),
+					},
+				],
+			},
+			content_type='application/json',
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertTrue(JobDetail.objects.filter(job_title='Future job').exists())
+		self.assertTrue(JobDetail.objects.filter(job_title='Today job').exists())
+		self.assertFalse(JobDetail.objects.filter(job_title='Expired job').exists())
+		job.refresh_from_db()
+		self.assertEqual(job.jobCount, 2)
+
+	def test_scrape_result_does_not_update_existing_record_when_new_callback_is_expired(self):
+		today = timezone.localdate()
+		url = 'https://devwork.vn/viec-lam/10/existing'
+		url_hash = compute_url_hash(url)
+		existing = JobDetail.objects.create(
+			url=normalize_url(url),
+			url_hash=url_hash,
+			job_title='Existing title',
+			company_name='Existing Co',
+			deadline=today + timedelta(days=10),
+		)
+		job = ScrapeJob.objects.create(
+			urls=[url],
+			status='processing',
+			totalUrls=1,
+			processedUrls=0,
+			progress=0,
+		)
+
+		response = self.client.post(
+			'/api/scrape/result/',
+			data={
+				'status': 'success',
+				'metadata': {'jobId': str(job.pk), 'detailUrls': [url]},
+				'data': [
+					{
+						'url': url,
+						'job_title': 'Expired update title',
+						'company_name': 'Expired Co',
+						'province': 'Ha Noi',
+						'deadline': (today - timedelta(days=1)).isoformat(),
+					}
+				],
+			},
+			content_type='application/json',
+		)
+
+		self.assertEqual(response.status_code, 200)
+		existing.refresh_from_db()
+		self.assertEqual(existing.job_title, 'Existing title')
+		self.assertEqual(existing.company_name, 'Existing Co')
+		self.assertEqual(existing.deadline, today + timedelta(days=10))
+
+	def test_scrape_result_url_hash_still_prevents_duplicates_for_devwork(self):
+		first_url = 'https://devwork.vn/viec-lam/11/python'
+		second_url = 'https://devwork.vn/viec-lam/11/python?utm_source=test'
+		job = ScrapeJob.objects.create(
+			urls=[first_url],
+			status='processing',
+			totalUrls=1,
+			processedUrls=0,
+			progress=0,
+		)
+
+		for title, url in [('First title', first_url), ('Second title', second_url)]:
+			response = self.client.post(
+				'/api/scrape/result/',
+				data={
+					'status': 'success',
+					'metadata': {'jobId': str(job.pk), 'detailUrls': [url]},
+					'data': [
+						{
+							'url': url,
+							'job_title': title,
+							'company_name': 'Devwork',
+							'province': 'Ha Noi',
+							'deadline': (timezone.localdate() + timedelta(days=3)).isoformat(),
+						}
+					],
+				},
+				content_type='application/json',
+			)
+			self.assertEqual(response.status_code, 200)
+
+		self.assertEqual(JobDetail.objects.filter(url_hash=compute_url_hash(first_url)).count(), 1)
+		self.assertEqual(JobDetail.objects.get(url_hash=compute_url_hash(first_url)).job_title, 'Second title')
